@@ -24,20 +24,15 @@
 %token EOF
 
 // Precedence and associativity
-%right ASSIGN PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN DIV_ASSIGN MOD_ASSIGN AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN
-%right QUESTION COLON
+%right ASSIGN
 %left OR
 %left AND
-%left PIPE
-%left HAT
-%left AMPERSAND
 %left EQ NE
 %left LT LE GT GE
-%left LSHIFT RSHIFT
 %left PLUS MINUS
 %left STAR DIV MOD
-%right BANG TILDE INCR DECR UNARY_PLUS UNARY_MINUS
-%left LBRACKET RBRACKET LPAREN RPAREN DOT ARROW
+%right BANG UNARY_PLUS UNARY_MINUS
+%left LPAREN RPAREN DOT ARROW
 
 %start translation_unit
 %type <Ast.translation_unit> translation_unit
