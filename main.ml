@@ -5,8 +5,6 @@ open Lib.Parser
 (* 打印AST的辅助函数 *)
 let print_type_specifier = function
   | Int -> "int"
-  | Char -> "char"
-  | Void -> "void"
 
 let print_binary_operator = function
   | Add -> "+"
@@ -22,51 +20,26 @@ let print_binary_operator = function
   | GreaterEqual -> ">="
   | LogicalAnd -> "&&"
   | LogicalOr -> "||"
-  | BitwiseAnd -> "&"
-  | BitwiseOr -> "|"
-  | BitwiseXor -> "^"
-  | LeftShift -> "<<"
-  | RightShift -> ">>"
-  | Assign -> "="
 
 let print_unary_operator = function
   | UnaryPlus -> "+"
   | UnaryMinus -> "-"
   | LogicalNot -> "!"
-  | BitwiseNot -> "~"
-
-let print_constant = function
-  | IntConst i -> string_of_int i
-  | CharConst c -> Printf.sprintf "'%c'" c
-  | StringConst s -> Printf.sprintf "\"%s\"" s
 
 let rec print_expression = function
   | Identifier id -> id
-  | Constant c -> print_constant c
+  | IntConstant c -> string_of_int c
   | UnaryOp (op, e) -> Printf.sprintf "(%s%s)" (print_unary_operator op) (print_expression e)
   | BinaryOp (e1, op, e2) -> 
       Printf.sprintf "(%s %s %s)" (print_expression e1) (print_binary_operator op) (print_expression e2)
   | FunctionCall (name, args) ->
       let arg_strs = List.map print_expression args in
       Printf.sprintf "%s(%s)" name (String.concat ", " arg_strs)
-  | ArrayAccess (arr, idx) ->
-      Printf.sprintf "%s[%s]" (print_expression arr) (print_expression idx)
-  | PostIncrement e -> Printf.sprintf "(%s)++" (print_expression e)
-  | PostDecrement e -> Printf.sprintf "(%s)--" (print_expression e)
-  | PreIncrement e -> Printf.sprintf "++(%s)" (print_expression e)
-  | PreDecrement e -> Printf.sprintf "--(%s)" (print_expression e)
-  | ConditionalExpr (cond, then_expr, else_expr) ->
-      Printf.sprintf "(%s ? %s : %s)" 
-        (print_expression cond) (print_expression then_expr) (print_expression else_expr)
   | Assignment (lval, rval) ->
       Printf.sprintf "%s = %s" (print_expression lval) (print_expression rval)
 
 let rec print_declarator = function
   | DirectDeclarator id -> id
-  | PointerDeclarator d -> Printf.sprintf "*%s" (print_declarator d)
-  | ArrayDeclarator (d, None) -> Printf.sprintf "%s[]" (print_declarator d)
-  | ArrayDeclarator (d, Some size) -> 
-      Printf.sprintf "%s[%s]" (print_declarator d) (print_expression size)
   | FunctionDeclarator (d, params) ->
       let param_strs = List.map print_parameter params in
       Printf.sprintf "%s(%s)" (print_declarator d) (String.concat ", " param_strs)
@@ -98,12 +71,6 @@ let rec print_statement indent = function
   | WhileStmt (cond, body) ->
       Printf.sprintf "%swhile (%s)\n%s" 
         indent (print_expression cond) (print_statement (indent ^ "  ") body)
-  | ForStmt (init, cond, update, body) ->
-      let init_str = match init with None -> "" | Some e -> print_expression e in
-      let cond_str = match cond with None -> "" | Some e -> print_expression e in
-      let update_str = match update with None -> "" | Some e -> print_expression e in
-      Printf.sprintf "%sfor (%s; %s; %s)\n%s" 
-        indent init_str cond_str update_str (print_statement (indent ^ "  ") body)
   | ReturnStmt None -> Printf.sprintf "%sreturn;" indent
   | ReturnStmt (Some e) -> Printf.sprintf "%sreturn %s;" indent (print_expression e)
   | BreakStmt -> Printf.sprintf "%sbreak;" indent
