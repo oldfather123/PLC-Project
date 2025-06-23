@@ -97,18 +97,40 @@ let parse_file filename =
       (pos.pos_cnum - pos.pos_bol + 1);
     raise e
 
+let test_files = [ 
+  "test/test1.c"; "test/test2.c"; "test/test3.c"; "test/test4.c"; "test/test5.c";
+  "test/test6.c"; "test/test7.c"; "test/test8.c"; "test/test9.c"; "test/test10.c"
+]
+
 let () =
-  if Array.length Sys.argv <> 2 then (
-    Printf.eprintf "Usage: %s <input_file>\n" Sys.argv.(0);
-    exit 1
-  );
-  
-  let filename = Sys.argv.(1) in
-  try
-    let ast = parse_file filename in
-    print_comp_unit ast
-  with
-  | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
-  | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
-  | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
-  | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
+  match Array.length Sys.argv with
+  | 1 ->  
+      List.iter (fun filename ->
+        Printf.printf "=== Parsing file: %s ===\n" filename;
+        try
+          let ast = parse_file filename in
+          print_comp_unit ast
+        with
+        | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
+        | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
+        | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
+        | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
+      ) test_files
+
+  | 2 ->  
+      let filename = Sys.argv.(1) in
+      Printf.printf "=== Parsing file: %s ===\n" filename;
+      (try
+        let ast = parse_file filename in
+        print_comp_unit ast
+      with
+      | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
+      | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
+      | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
+      | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
+      )
+
+  | _ ->
+      Printf.eprintf "Usage:\n  %s         # run all tests\n  %s <file>  # run test on <file>\n" Sys.argv.(0) Sys.argv.(0);
+      exit 1
+

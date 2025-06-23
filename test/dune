@@ -1,0 +1,4 @@
+(executables
+ (names test)
+ (modules test)
+ (libraries lib))
