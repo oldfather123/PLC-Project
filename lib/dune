@@ -1,7 +1,6 @@
 (library
- (name interpreterlib)
+ (name lib)
  (modules parser lexer ast))
 
 (ocamllex lexer)
-(menhir 
- (modules parser))
+(ocamlyacc parser)

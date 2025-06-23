@@ -1,8 +1,8 @@
-# dune exec ./main.exe
+# dune exec ./main.exe test1.in
 # OCAMLPARAM: unset
 # Shared cache: enabled-except-user-rules
 # Shared cache location: /home/oldfather/.cache/dune/db
-# Workspace root: /home/oldfather/ocaml/exam/tut5
+# Workspace root: /home/oldfather/ocaml/exam/PLC-Project
 # Auto-detected concurrency: 32
 # Dune context:
 #  { name = "default"
@@ -13,6 +13,4 @@
 #  ; build_dir = In_build_dir "default"
 #  ; instrument_with = []
 #  }
-$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_573850_output
-$ (cd _build/default && /home/oldfather/.opam/ocaml-variants/bin/ocamlopt.opt -w @1..3@5..28@30..39@43@46..47@49..57@61..62-40 -strict-sequence -strict-formats -short-paths -keep-locs -w -32-27-26-39-8-37 -g -I .main.eobjs/byte -I .main.eobjs/native -I lib/.interpreterlib.objs/byte -I lib/.interpreterlib.objs/native -intf-suffix .ml -no-alias-deps -opaque -o .main.eobjs/native/dune__exe__Main.cmx -c -impl main.ml)
-$ (cd _build/default && /home/oldfather/.opam/ocaml-variants/bin/ocamlopt.opt -w @1..3@5..28@30..39@43@46..47@49..57@61..62-40 -strict-sequence -strict-formats -short-paths -keep-locs -w -32-27-26-39-8-37 -g -o main.exe lib/interpreterlib.cmxa .main.eobjs/native/dune__exe__Main.cmx)
+$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_8a900b_output

@@ -1,130 +1,166 @@
-open Interpreterlib
-open Ast
-let rec string_of_expr = function
-  | Int x -> Printf.sprintf "Int %d" x
-  | Var i -> Printf.sprintf "Var %s" i
-  | Bool b ->
-    let sign = match b with
-      | true -> "true"
-      | false -> "false"
-    in Printf.sprintf "Bool %s" sign
-  | Binop (binop, e1, e2) -> 
-    let bop = match binop with
-      | Add -> "Add"
-      | Sub -> "Sub"
-      | Mul -> "Mul"
-      | Div -> "Div"
-      | Leq -> "Leq"
-    in Printf.sprintf "Binop (%s, %s, %s)" bop (string_of_expr e1) (string_of_expr e2)
-  | If (e1, e2, e3) -> Printf.sprintf "If (%s, %s, %s)" (string_of_expr e1) (string_of_expr e2) (string_of_expr e3)
-  | Let (x, e1, e2) -> Printf.sprintf "Let (%s, %s, %s)" x (string_of_expr e1) (string_of_expr e2)
-  | Func (x, e) -> Printf.sprintf "Func (%s, %s)" x (string_of_expr e)
-  | App (e1, e2) -> Printf.sprintf "App (%s, %s)" (string_of_expr e1) (string_of_expr e2)
-let parse s : expr =
-  let lexbuf = Lexing.from_string s in
-  let ast = Parser.main Lexer.read lexbuf in
-  ast
-let is_value = function
-  | Int _ | Bool _ | Func _ -> true
-  | Var _ | Binop _ | If _ | Let _ | App _ -> false
-module VarSet = Set.Make(String)
-let singleton = VarSet.singleton
-let union = VarSet.union
-let diff = VarSet.diff
-let mem = VarSet.mem
-let rec freevar : expr -> VarSet.t = function
-  | Var x -> singleton x
-  | App (e1, e2) -> union (freevar e1) (freevar e2)
-  | Func (x, e) -> diff (freevar e) (singleton x)
-  | _ -> failwith "Unnecessary generation"
-let gensym =
-  let counter = ref 0 in
-  fun () ->
-    incr counter; "$x" ^ string_of_int !counter
-let rec replace e v x = match e with
-  | Var y -> if y = x then Var v else e
-  | App (e1, e2) -> App (replace e1 v x, replace e2 v x)
-  | Func (y, e1) -> Func ((if y = x then v else y), replace e1 v x)
-let rec subst e v x = match e with
-  | Int _ | Bool _ -> e
-  | Var y -> if y = x then v else e
-  | Binop (binop, e1, e2) -> Binop (binop, subst e1 v x, subst e2 v x)
-  | If (e1, e2, e3) -> If (subst e1 v x, subst e2 v x, subst e3 v x)
-  | Let (y, e1, e2) -> if y = x then Let (y, subst e1 e x, e2) else Let (y, subst e1 v x, subst e2 v x)
-  | App (e1, e2) -> App (subst e1 v x, subst e2 v x)
-  | Func (y, e1) -> 
-    if y = x then e
-    else if not (mem y (freevar v)) then Func (y, subst e1 v x)
-    else 
-      let newvar = gensym () in
-      let newexpr = replace e1 newvar y in
-      Func (newvar, subst newexpr v x)
-let rec step = function
-  | Int _ -> failwith "Does not step on an integer"
-  | Bool _ -> failwith "Does not step on a boolean"
-  | Var _ -> failwith "Variable is unsteppable"
-  | Binop (binop, e1, e2) when is_value e1 && is_value e2 -> step_binop binop e1 e2
-  | Binop (binop, e1, e2) when is_value e1 -> Binop (binop, e1, step e2)
-  | Binop (binop, e1, e2) -> Binop (binop, step e1, e2)
-  | If (Bool true, e2, _) -> e2
-  | If (Bool false, _, e3) -> e3
-  | If (Int _, _, _) -> failwith "Condition must be a boolean"
-  | If (e1, e2, e3) -> If (step e1, e2, e3) 
-  | Let (x, e1, e2) when is_value e1 -> subst e2 e1 x
-  | Let (x, e1, e2) -> Let (x, step e1, e2)
-  | _ -> failwith "Func and App not using small-step"
-and step_binop binop e1 e2 = match binop, e1, e2 with
-  | Add, Int a, Int b -> Int (a + b)
-  | Sub, Int a, Int b -> Int (a - b)
-  | Mul, Int a, Int b -> Int (a * b)
-  | Div, Int a, Int b when b <> 0 -> Int (a / b)
-  | Div, Int _, Int 0 -> failwith "Can't be divided by zero"
-  | Leq, Int a, Int b -> Bool (a <= b)
-  | _ -> failwith "Not binop operations"
-let rec eval e = 
-  if is_value e then e
-  else e |> step |> eval
-let interp s = 
-  s |> parse |> eval |> string_of_expr
-type strategy = CBV | CBN
-let curr_strat = CBV
-let rec eval_big e = match e with
-  | Int _ | Bool _ | Func _ -> e
-  | Var _ -> failwith "Variable is unsteppable"
-  | Binop (binop, e1, e2) -> eval_bop binop e1 e2
-  | If (e1, e2, e3) -> eval_if e1 e2 e3
-  | Let (x, e1, e2) -> eval_big (subst e2 (eval_big e1) x)
-  | App (e1, e2) -> eval_app e1 e2
-and eval_bop binop e1 e2 = match binop, eval_big e1, eval_big e2 with
-  | Add, Int a, Int b -> Int (a + b)
-  | Sub, Int a, Int b -> Int (a - b)
-  | Mul, Int a, Int b -> Int (a * b)
-  | Div, Int a, Int b when b <> 0 -> Int (a / b)
-  | Div, Int _, Int 0 -> failwith "Can't be divided by zero"
-  | Leq, Int a, Int b -> Bool (a <= b)
-  | _ -> failwith "Not binop operations"
-and eval_if e1 e2 e3 = match eval_big e1 with
-  | Bool true -> eval_big e2
-  | Bool false -> eval_big e3
-  | _ -> failwith "Not if operations"
-and eval_app e1 e2 = match eval_big e1 with
-  | Func (x, e) -> 
-    let e' = match curr_strat with
-      | CBV -> eval_big e2
-      | CBN -> e2
-    in
-    eval_big (subst e e' x)
-  | _ ->  failwith "Must apply to a function"
-let interp_big s = 
-  s |> parse |> eval_big |> string_of_expr
+open Lib.Ast
+open Lib.Lexer
+open Lib.Parser
+
+(* 打印AST的辅助函数 *)
+let print_type_specifier = function
+  | Int -> "int"
+  | Char -> "char"
+  | Void -> "void"
+
+let print_binary_operator = function
+  | Add -> "+"
+  | Sub -> "-"
+  | Mul -> "*"
+  | Div -> "/"
+  | Mod -> "%"
+  | Equal -> "=="
+  | NotEqual -> "!="
+  | Less -> "<"
+  | LessEqual -> "<="
+  | Greater -> ">"
+  | GreaterEqual -> ">="
+  | LogicalAnd -> "&&"
+  | LogicalOr -> "||"
+  | BitwiseAnd -> "&"
+  | BitwiseOr -> "|"
+  | BitwiseXor -> "^"
+  | LeftShift -> "<<"
+  | RightShift -> ">>"
+  | Assign -> "="
+
+let print_unary_operator = function
+  | UnaryPlus -> "+"
+  | UnaryMinus -> "-"
+  | LogicalNot -> "!"
+  | BitwiseNot -> "~"
+
+let print_constant = function
+  | IntConst i -> string_of_int i
+  | CharConst c -> Printf.sprintf "'%c'" c
+  | StringConst s -> Printf.sprintf "\"%s\"" s
+
+let rec print_expression = function
+  | Identifier id -> id
+  | Constant c -> print_constant c
+  | UnaryOp (op, e) -> Printf.sprintf "(%s%s)" (print_unary_operator op) (print_expression e)
+  | BinaryOp (e1, op, e2) -> 
+      Printf.sprintf "(%s %s %s)" (print_expression e1) (print_binary_operator op) (print_expression e2)
+  | FunctionCall (name, args) ->
+      let arg_strs = List.map print_expression args in
+      Printf.sprintf "%s(%s)" name (String.concat ", " arg_strs)
+  | ArrayAccess (arr, idx) ->
+      Printf.sprintf "%s[%s]" (print_expression arr) (print_expression idx)
+  | PostIncrement e -> Printf.sprintf "(%s)++" (print_expression e)
+  | PostDecrement e -> Printf.sprintf "(%s)--" (print_expression e)
+  | PreIncrement e -> Printf.sprintf "++(%s)" (print_expression e)
+  | PreDecrement e -> Printf.sprintf "--(%s)" (print_expression e)
+  | ConditionalExpr (cond, then_expr, else_expr) ->
+      Printf.sprintf "(%s ? %s : %s)" 
+        (print_expression cond) (print_expression then_expr) (print_expression else_expr)
+  | Assignment (lval, rval) ->
+      Printf.sprintf "%s = %s" (print_expression lval) (print_expression rval)
+
+let rec print_declarator = function
+  | DirectDeclarator id -> id
+  | PointerDeclarator d -> Printf.sprintf "*%s" (print_declarator d)
+  | ArrayDeclarator (d, None) -> Printf.sprintf "%s[]" (print_declarator d)
+  | ArrayDeclarator (d, Some size) -> 
+      Printf.sprintf "%s[%s]" (print_declarator d) (print_expression size)
+  | FunctionDeclarator (d, params) ->
+      let param_strs = List.map print_parameter params in
+      Printf.sprintf "%s(%s)" (print_declarator d) (String.concat ", " param_strs)
+
+and print_parameter = function
+  | Parameter (ts, d) -> 
+      Printf.sprintf "%s %s" (print_type_specifier ts) (print_declarator d)
+
+let print_declaration = function
+  | Declaration (ts, declarators) ->
+      let decl_strs = List.map print_declarator declarators in
+      Printf.sprintf "%s %s;" (print_type_specifier ts) (String.concat ", " decl_strs)
+
+let rec print_statement indent = function
+  | ExpressionStmt None -> Printf.sprintf "%s;" indent
+  | ExpressionStmt (Some e) -> Printf.sprintf "%s%s;" indent (print_expression e)
+  | CompoundStmt stmts ->
+      let stmt_strs = List.map (print_statement (indent ^ "  ")) stmts in
+      Printf.sprintf "%s{\n%s\n%s}" indent (String.concat "\n" stmt_strs) indent
+  | IfStmt (cond, then_stmt, None) ->
+      Printf.sprintf "%sif (%s)\n%s" 
+        indent (print_expression cond) (print_statement (indent ^ "  ") then_stmt)
+  | IfStmt (cond, then_stmt, Some else_stmt) ->
+      Printf.sprintf "%sif (%s)\n%s\n%selse\n%s" 
+        indent (print_expression cond) 
+        (print_statement (indent ^ "  ") then_stmt)
+        indent
+        (print_statement (indent ^ "  ") else_stmt)
+  | WhileStmt (cond, body) ->
+      Printf.sprintf "%swhile (%s)\n%s" 
+        indent (print_expression cond) (print_statement (indent ^ "  ") body)
+  | ForStmt (init, cond, update, body) ->
+      let init_str = match init with None -> "" | Some e -> print_expression e in
+      let cond_str = match cond with None -> "" | Some e -> print_expression e in
+      let update_str = match update with None -> "" | Some e -> print_expression e in
+      Printf.sprintf "%sfor (%s; %s; %s)\n%s" 
+        indent init_str cond_str update_str (print_statement (indent ^ "  ") body)
+  | ReturnStmt None -> Printf.sprintf "%sreturn;" indent
+  | ReturnStmt (Some e) -> Printf.sprintf "%sreturn %s;" indent (print_expression e)
+  | BreakStmt -> Printf.sprintf "%sbreak;" indent
+  | ContinueStmt -> Printf.sprintf "%scontinue;" indent
+  | DeclarationStmt d -> Printf.sprintf "%s%s" indent (print_declaration d)
+
+let print_function_definition = function
+  | FunctionDef (ts, d, decls, body) ->
+      let decl_strs = List.map print_declaration decls in
+      let decls_section = if decls = [] then "" else 
+        Printf.sprintf "\n%s\n" (String.concat "\n" decl_strs) in
+      Printf.sprintf "%s %s%s\n%s" 
+        (print_type_specifier ts) (print_declarator d) decls_section 
+        (print_statement "" body)
+
+let print_external_declaration = function
+  | FuncDef fd -> print_function_definition fd
+  | Decl d -> print_declaration d
+
+let print_translation_unit tu =
+  Printf.printf "=== C Program AST ===\n\n";
+  List.iteri (fun i ext_decl ->
+    Printf.printf "External Declaration %d:\n" (i + 1);
+    Printf.printf "%s\n\n" (print_external_declaration ext_decl)
+  ) tu
+
+let parse_file filename =
+  let ic = open_in filename in
+  let lexbuf = Lexing.from_channel ic in
+  (* 设置文件名用于错误报告 *)
+  Lexing.set_filename lexbuf filename;
+  try
+    let ast = translation_unit token lexbuf in
+    close_in ic;
+    ast
+  with
+  | e -> 
+    close_in ic;
+    let pos = Lexing.lexeme_start_p lexbuf in
+    Printf.eprintf "Error in file %s at line %d, character %d\n" 
+      pos.pos_fname
+      pos.pos_lnum 
+      (pos.pos_cnum - pos.pos_bol + 1);
+    raise e
+
 let () =
-  let filename = "/home/oldfather/ocaml/exam/tut5/test3.in" in
-  let in_channel = open_in filename in
-  let file_content = really_input_string in_channel (in_channel_length in_channel) in
-  close_in in_channel;
-  (* let res = interp file_content in
-  Printf.printf "Result of interpreting: %s\n" res; *)
-  let res = interp_big file_content in
-  Printf.printf "Result of interpreting with big-step model: %s\n" res;
-  let ast = parse file_content in
-  Printf.printf "AST: %s\n" (string_of_expr ast);
+  if Array.length Sys.argv <> 2 then (
+    Printf.eprintf "Usage: %s <input_file>\n" Sys.argv.(0);
+    exit 1
+  );
+  
+  let filename = Sys.argv.(1) in
+  try
+    let ast = parse_file filename in
+    print_translation_unit ast
+  with
+  | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
+  | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
+  | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
+  | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)

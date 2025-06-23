@@ -1,1 +1,9 @@
-let y = 6 in let x = 5 * 6 in if x <= 30 - y then x - 1 else y + 1
+int main () {
+    int x;
+    int y;
+    int ans;
+    x = 1;
+    y = 2;
+    ans = x + y;
+    return 0;
+}
