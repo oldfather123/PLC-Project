@@ -1,1 +1,1 @@
-lib/parser.ml: Ast Lexing List Obj Parsing
+lib/parser.ml: Ast Lexing Obj Parsing

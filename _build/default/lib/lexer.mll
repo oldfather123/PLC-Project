@@ -8,7 +8,7 @@ let newline = '\r' | '\n' | "\r\n"
 let digit = ['0'-'9']
 let letter = ['a'-'z' 'A'-'Z']
 let identifier = (letter | '_') (letter | digit | '_')*
-let integer_constant = digit+
+let number = digit+
 
 rule token = parse
   | whitespace+ { token lexbuf }
@@ -31,6 +31,7 @@ rule token = parse
   | "-" { MINUS }
   | "*" { STAR }
   | "/" { DIV }
+  | "%" { MOD }
   | "==" { EQ }
   | "!=" { NE }
   | "<" { LT }
@@ -39,6 +40,7 @@ rule token = parse
   | ">=" { GE }
   | "&&" { AND }
   | "||" { OR }
+  | "!" { BANG }
   | "=" { ASSIGN }
 
   (* Punctuation *)
@@ -50,7 +52,7 @@ rule token = parse
   | "," { COMMA }
 
   (* Constants and identifiers *)
-  | integer_constant as i { INTEGER_CONSTANT (int_of_string i) }
+  | number as n { NUMBER (int_of_string n) }
   | identifier as id { IDENTIFIER id }
 
   | eof { EOF }

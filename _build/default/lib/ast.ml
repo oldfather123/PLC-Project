@@ -1,75 +1,46 @@
-(* Abstract Syntax Tree for C subset *)
+(* Abstract Syntax Tree for ToyC language *)
 
 type identifier = string
-
-type constant = 
-  | IntConst of int
-  | CharConst of char
-  | StringConst of string
 
 type unary_operator =
   | UnaryPlus
   | UnaryMinus
   | LogicalNot
-  | BitwiseNot
 
 type binary_operator =
   | Add | Sub | Mul | Div | Mod
   | Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual
   | LogicalAnd | LogicalOr
-  | BitwiseAnd | BitwiseOr | BitwiseXor
-  | LeftShift | RightShift
-  | Assign
 
 type expression =
   | Identifier of identifier
-  | Constant of constant
+  | Number of int
   | UnaryOp of unary_operator * expression
   | BinaryOp of expression * binary_operator * expression
   | FunctionCall of identifier * expression list
-  | ArrayAccess of expression * expression
-  | PostIncrement of expression
-  | PostDecrement of expression
-  | PreIncrement of expression
-  | PreDecrement of expression
-  | ConditionalExpr of expression * expression * expression
-  | Assignment of expression * expression
 
 type type_specifier =
   | Int
-  | Char
   | Void
 
-type declarator =
-  | DirectDeclarator of identifier
-  | PointerDeclarator of declarator
-  | ArrayDeclarator of declarator * expression option
-  | FunctionDeclarator of declarator * parameter list
-
-and parameter =
-  | Parameter of type_specifier * declarator
-
-type declaration =
-  | Declaration of type_specifier * declarator list
+type param =
+  | Param of identifier
 
 type statement =
-  | ExpressionStmt of expression option
-  | CompoundStmt of statement list
+  | Block of statement list
+  | EmptyStmt
+  | ExprStmt of expression
+  | Assignment of identifier * expression
+  | VarDecl of identifier * expression
   | IfStmt of expression * statement * statement option
   | WhileStmt of expression * statement
-  | ForStmt of expression option * expression option * expression option * statement
-  | ReturnStmt of expression option
   | BreakStmt
   | ContinueStmt
-  | DeclarationStmt of declaration
+  | ReturnStmt of expression option  (* 修改：支持可选的返回值 *)
 
-type function_definition =
-  | FunctionDef of type_specifier * declarator * declaration list * statement
+type func_def =
+  | FuncDef of type_specifier * identifier * param list * statement
 
-type external_declaration =
-  | FuncDef of function_definition
-  | Decl of declaration
+type comp_unit = func_def list
 
-type translation_unit = external_declaration list
-
-type program = translation_unit
+type program = comp_unit

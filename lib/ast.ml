@@ -1,8 +1,6 @@
-(* Abstract Syntax Tree for C subset *)
+(* Abstract Syntax Tree for ToyC language *)
 
 type identifier = string
-
-type intconstant = int
 
 type unary_operator =
   | UnaryPlus
@@ -16,42 +14,33 @@ type binary_operator =
 
 type expression =
   | Identifier of identifier
-  | IntConstant of intconstant
+  | Number of int
   | UnaryOp of unary_operator * expression
   | BinaryOp of expression * binary_operator * expression
   | FunctionCall of identifier * expression list
-  | Assignment of expression * expression
 
 type type_specifier =
   | Int
+  | Void
 
-type declarator =
-  | DirectDeclarator of identifier
-  | FunctionDeclarator of declarator * parameter list
-
-and parameter =
-  | Parameter of type_specifier * declarator
-
-type declaration =
-  | Declaration of type_specifier * declarator list
+type param =
+  | Param of identifier
 
 type statement =
-  | ExpressionStmt of expression option
-  | CompoundStmt of statement list
+  | Block of statement list
+  | EmptyStmt
+  | ExprStmt of expression
+  | Assignment of identifier * expression
+  | VarDecl of identifier * expression
   | IfStmt of expression * statement * statement option
   | WhileStmt of expression * statement
-  | ReturnStmt of expression option
   | BreakStmt
   | ContinueStmt
-  | DeclarationStmt of declaration
+  | ReturnStmt of expression option  (* 修改：支持可选的返回值 *)
 
-type function_definition =
-  | FunctionDef of type_specifier * declarator * declaration list * statement
+type func_def =
+  | FuncDef of type_specifier * identifier * param list * statement
 
-type external_declaration =
-  | FuncDef of function_definition
-  | Decl of declaration
+type comp_unit = func_def list
 
-type translation_unit = external_declaration list
-
-type program = translation_unit
+type program = comp_unit

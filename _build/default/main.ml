@@ -5,7 +5,6 @@ open Lib.Parser
 (* 打印AST的辅助函数 *)
 let print_type_specifier = function
   | Int -> "int"
-  | Char -> "char"
   | Void -> "void"
 
 let print_binary_operator = function
@@ -22,70 +21,33 @@ let print_binary_operator = function
   | GreaterEqual -> ">="
   | LogicalAnd -> "&&"
   | LogicalOr -> "||"
-  | BitwiseAnd -> "&"
-  | BitwiseOr -> "|"
-  | BitwiseXor -> "^"
-  | LeftShift -> "<<"
-  | RightShift -> ">>"
-  | Assign -> "="
 
 let print_unary_operator = function
   | UnaryPlus -> "+"
   | UnaryMinus -> "-"
   | LogicalNot -> "!"
-  | BitwiseNot -> "~"
-
-let print_constant = function
-  | IntConst i -> string_of_int i
-  | CharConst c -> Printf.sprintf "'%c'" c
-  | StringConst s -> Printf.sprintf "\"%s\"" s
 
 let rec print_expression = function
   | Identifier id -> id
-  | Constant c -> print_constant c
+  | Number n -> string_of_int n
   | UnaryOp (op, e) -> Printf.sprintf "(%s%s)" (print_unary_operator op) (print_expression e)
   | BinaryOp (e1, op, e2) -> 
       Printf.sprintf "(%s %s %s)" (print_expression e1) (print_binary_operator op) (print_expression e2)
   | FunctionCall (name, args) ->
       let arg_strs = List.map print_expression args in
       Printf.sprintf "%s(%s)" name (String.concat ", " arg_strs)
-  | ArrayAccess (arr, idx) ->
-      Printf.sprintf "%s[%s]" (print_expression arr) (print_expression idx)
-  | PostIncrement e -> Printf.sprintf "(%s)++" (print_expression e)
-  | PostDecrement e -> Printf.sprintf "(%s)--" (print_expression e)
-  | PreIncrement e -> Printf.sprintf "++(%s)" (print_expression e)
-  | PreDecrement e -> Printf.sprintf "--(%s)" (print_expression e)
-  | ConditionalExpr (cond, then_expr, else_expr) ->
-      Printf.sprintf "(%s ? %s : %s)" 
-        (print_expression cond) (print_expression then_expr) (print_expression else_expr)
-  | Assignment (lval, rval) ->
-      Printf.sprintf "%s = %s" (print_expression lval) (print_expression rval)
 
-let rec print_declarator = function
-  | DirectDeclarator id -> id
-  | PointerDeclarator d -> Printf.sprintf "*%s" (print_declarator d)
-  | ArrayDeclarator (d, None) -> Printf.sprintf "%s[]" (print_declarator d)
-  | ArrayDeclarator (d, Some size) -> 
-      Printf.sprintf "%s[%s]" (print_declarator d) (print_expression size)
-  | FunctionDeclarator (d, params) ->
-      let param_strs = List.map print_parameter params in
-      Printf.sprintf "%s(%s)" (print_declarator d) (String.concat ", " param_strs)
-
-and print_parameter = function
-  | Parameter (ts, d) -> 
-      Printf.sprintf "%s %s" (print_type_specifier ts) (print_declarator d)
-
-let print_declaration = function
-  | Declaration (ts, declarators) ->
-      let decl_strs = List.map print_declarator declarators in
-      Printf.sprintf "%s %s;" (print_type_specifier ts) (String.concat ", " decl_strs)
+let print_param = function
+  | Param id -> Printf.sprintf "int %s" id
 
 let rec print_statement indent = function
-  | ExpressionStmt None -> Printf.sprintf "%s;" indent
-  | ExpressionStmt (Some e) -> Printf.sprintf "%s%s;" indent (print_expression e)
-  | CompoundStmt stmts ->
+  | Block stmts ->
       let stmt_strs = List.map (print_statement (indent ^ "  ")) stmts in
       Printf.sprintf "%s{\n%s\n%s}" indent (String.concat "\n" stmt_strs) indent
+  | EmptyStmt -> Printf.sprintf "%s;" indent
+  | ExprStmt e -> Printf.sprintf "%s%s;" indent (print_expression e)
+  | Assignment (id, e) -> Printf.sprintf "%s%s = %s;" indent id (print_expression e)
+  | VarDecl (id, e) -> Printf.sprintf "%sint %s = %s;" indent id (print_expression e)
   | IfStmt (cond, then_stmt, None) ->
       Printf.sprintf "%sif (%s)\n%s" 
         indent (print_expression cond) (print_statement (indent ^ "  ") then_stmt)
@@ -98,45 +60,31 @@ let rec print_statement indent = function
   | WhileStmt (cond, body) ->
       Printf.sprintf "%swhile (%s)\n%s" 
         indent (print_expression cond) (print_statement (indent ^ "  ") body)
-  | ForStmt (init, cond, update, body) ->
-      let init_str = match init with None -> "" | Some e -> print_expression e in
-      let cond_str = match cond with None -> "" | Some e -> print_expression e in
-      let update_str = match update with None -> "" | Some e -> print_expression e in
-      Printf.sprintf "%sfor (%s; %s; %s)\n%s" 
-        indent init_str cond_str update_str (print_statement (indent ^ "  ") body)
-  | ReturnStmt None -> Printf.sprintf "%sreturn;" indent
-  | ReturnStmt (Some e) -> Printf.sprintf "%sreturn %s;" indent (print_expression e)
   | BreakStmt -> Printf.sprintf "%sbreak;" indent
   | ContinueStmt -> Printf.sprintf "%scontinue;" indent
-  | DeclarationStmt d -> Printf.sprintf "%s%s" indent (print_declaration d)
+  | ReturnStmt None -> Printf.sprintf "%sreturn;" indent
+  | ReturnStmt (Some e) -> Printf.sprintf "%sreturn %s;" indent (print_expression e)
 
-let print_function_definition = function
-  | FunctionDef (ts, d, decls, body) ->
-      let decl_strs = List.map print_declaration decls in
-      let decls_section = if decls = [] then "" else 
-        Printf.sprintf "\n%s\n" (String.concat "\n" decl_strs) in
-      Printf.sprintf "%s %s%s\n%s" 
-        (print_type_specifier ts) (print_declarator d) decls_section 
+let print_func_def = function
+  | FuncDef (ts, name, params, body) ->
+      let param_strs = List.map print_param params in
+      Printf.sprintf "%s %s(%s)\n%s" 
+        (print_type_specifier ts) name (String.concat ", " param_strs)
         (print_statement "" body)
 
-let print_external_declaration = function
-  | FuncDef fd -> print_function_definition fd
-  | Decl d -> print_declaration d
-
-let print_translation_unit tu =
-  Printf.printf "=== C Program AST ===\n\n";
-  List.iteri (fun i ext_decl ->
-    Printf.printf "External Declaration %d:\n" (i + 1);
-    Printf.printf "%s\n\n" (print_external_declaration ext_decl)
-  ) tu
+let print_comp_unit comp_unit =
+  Printf.printf "=== ToyC Program AST ===\n\n";
+  List.iteri (fun i func_def ->
+    Printf.printf "Function %d:\n" (i + 1);
+    Printf.printf "%s\n\n" (print_func_def func_def)
+  ) comp_unit
 
 let parse_file filename =
   let ic = open_in filename in
   let lexbuf = Lexing.from_channel ic in
-  (* 设置文件名用于错误报告 *)
   Lexing.set_filename lexbuf filename;
   try
-    let ast = translation_unit token lexbuf in
+    let ast = comp_unit token lexbuf in
     close_in ic;
     ast
   with
@@ -149,18 +97,38 @@ let parse_file filename =
       (pos.pos_cnum - pos.pos_bol + 1);
     raise e
 
+let test_files = [ 
+  "test1.in"
+]
+
 let () =
-  if Array.length Sys.argv <> 2 then (
-    Printf.eprintf "Usage: %s <input_file>\n" Sys.argv.(0);
-    exit 1
-  );
-  
-  let filename = Sys.argv.(1) in
-  try
-    let ast = parse_file filename in
-    print_translation_unit ast
-  with
-  | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
-  | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
-  | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
-  | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
+  match Array.length Sys.argv with
+  | 1 ->  
+      List.iter (fun filename ->
+        Printf.printf "=== Parsing file: %s ===\n" filename;
+        try
+          let ast = parse_file filename in
+          print_comp_unit ast
+        with
+        | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
+        | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
+        | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
+        | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
+      ) test_files
+
+  | 2 ->  
+      let filename = Sys.argv.(1) in
+      Printf.printf "=== Parsing file: %s ===\n" filename;
+      (try
+        let ast = parse_file filename in
+        print_comp_unit ast
+      with
+      | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
+      | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
+      | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
+      | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
+      )
+
+  | _ ->
+      Printf.eprintf "Usage:\n  %s         # run all tests\n  %s <file>  # run test on <file>\n" Sys.argv.(0) Sys.argv.(0);
+      exit 1
