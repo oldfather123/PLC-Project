@@ -95,13 +95,15 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
     (match else_s_opt with
       | Some else_s ->
           (* 复制环境，分支独立 *)
-          let l_else = new_label () in
+         let l_else = new_label () in
          let l_end = new_label () in
          code := !code @ [TacIfGoto (cond_not_t, l_else)];
-         gen_stmt then_s env code;
+         let env_then = Hashtbl.copy env in
+         gen_stmt then_s env_then code;
          code := !code @ [TacGoto l_end];
          code := !code @ [TacLabel l_else];
-         gen_stmt else_s env code;
+         let env_else = Hashtbl.copy env in
+         gen_stmt else_s env_else code;
          code := !code @ [TacLabel l_end]
           (* 这里未实现phi合并，适合简单情况 *)
       | None ->
