@@ -88,50 +88,61 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let t = gen_expr e env code in
       let ssa_id = inc_ssa_version env id in
       code := !code @ [TacAssign (ssa_id, t)]
-  | IfStmt (cond, then_s, else_s_opt) ->
-      let l_true = new_label () in
-      let l_end = new_label () in
-      let cond_t = gen_expr cond env code in
-      code := !code @ [TacIfGoto (cond_t, l_true)];
-      (match else_s_opt with
+   | IfStmt (cond, then_s, else_s_opt) ->
+    let cond_t = gen_expr cond env code in
+    let cond_not_t = new_temp () in
+    code := !code @ [TacUnOp (cond_not_t, "!", cond_t)];
+    (match else_s_opt with
       | Some else_s ->
           (* 复制环境，分支独立 *)
-          let env_else = Hashtbl.copy env in
-          gen_stmt else_s env_else code;
-          code := !code @ [TacGoto l_end];
-          code := !code @ [TacLabel l_true];
-          let env_then = Hashtbl.copy env in
-          gen_stmt then_s env_then code;
-          code := !code @ [TacLabel l_end]
+          let l_else = new_label () in
+         let l_end = new_label () in
+         code := !code @ [TacIfGoto (cond_not_t, l_else)];
+         gen_stmt then_s env code;
+         code := !code @ [TacGoto l_end];
+         code := !code @ [TacLabel l_else];
+         gen_stmt else_s env code;
+         code := !code @ [TacLabel l_end]
           (* 这里未实现phi合并，适合简单情况 *)
       | None ->
-          code := !code @ [TacLabel l_true];
-          gen_stmt then_s env code;
-          code := !code @ [TacLabel l_end])
-  | WhileStmt (cond, body) ->
-      let l_begin = new_label () in
-      let l_true = new_label () in
+        let l_end = new_label () in
+        code := !code @ [TacIfGoto (cond_not_t, l_end)];
+        gen_stmt then_s env code;
+        code := !code @ [TacLabel l_end])
+
+   | WhileStmt (cond, body) ->
+      let l_cond = new_label () in
+      let l_body = new_label () in
+      let l_continue = new_label () in
       let l_end = new_label () in
-      continue_stack := l_begin :: !continue_stack;
+
+      continue_stack := l_continue :: !continue_stack;
       break_stack := l_end :: !break_stack;
-      code := !code @ [TacLabel l_begin];
+      code := !code @ [TacGoto l_cond];
+      code := !code @ [TacLabel l_cond];
       let cond_t = gen_expr cond env code in
-      code := !code @ [TacIfGoto (cond_t, l_true)];
-      code := !code @ [TacGoto l_end];
-      code := !code @ [TacLabel l_true];
+      let cond_not_t = new_temp () in
+      code := !code @ [TacUnOp (cond_not_t, "!", cond_t)];
+      code := !code @ [TacIfGoto (cond_not_t, l_end)];                 
+      code := !code @ [TacLabel l_body];
       gen_stmt body env code;
-      code := !code @ [TacGoto l_begin];
+      code := !code @ [TacGoto l_cond]; 
+      code := !code @ [TacLabel l_continue];
+      code := !code @ [TacGoto l_cond];   
       code := !code @ [TacLabel l_end];
       continue_stack := List.tl !continue_stack;
-      break_stack := List.tl !break_stack;
-  | BreakStmt -> 
-    (match !break_stack with
-      | l_end :: _ -> code := !code @ [TacGoto l_end]
-      | [] -> code := !code @ [TacComment "break (no loop context)"])
-  | ContinueStmt -> 
-    (match !continue_stack with
-      | l_begin :: _ -> code := !code @ [TacGoto l_begin]
-      | [] -> code := !code @ [TacComment "continue (no loop context)"])
+      break_stack := List.tl !break_stack
+
+   | BreakStmt ->
+      (match !break_stack with
+       | l_end :: _ -> code := !code @ [TacGoto l_end]
+       | [] -> code := !code @ [TacComment "break (not in loop)"])
+
+  | ContinueStmt ->
+      (match !continue_stack with
+       | l_cond :: _ -> code := !code @ [TacGoto l_cond]
+       | [] -> code := !code @ [TacComment "continue (not in loop)"])
+
   | ReturnStmt eo ->
       (match eo with
       | None -> code := !code @ [TacReturn None]
