@@ -1,6 +1,6 @@
 (library
  (name lib)
- (modules ast parser lexer))
+ (modules ast parser lexer env interpreter))
 
  (ocamllex lexer)
  (ocamlyacc parser)

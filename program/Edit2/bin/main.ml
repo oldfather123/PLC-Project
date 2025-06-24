@@ -99,8 +99,28 @@ let parse_file filename =
 
 let test_files = [ 
   "test/test1.c"; "test/test2.c"; "test/test3.c"; "test/test4.c"; "test/test5.c";
-  "test/test6.c"; "test/test7.c"; "test/test8.c"; "test/test9.c"; "test/test10.c"
+  "test/test6.c"; "test/test7.c"; "test/test8.c"; "test/test9.c"; "test/test10.c"; "test/test11.c"
 ]
+
+
+let run_comp_unit comp_unit =
+  let env = Lib.Env.create () in
+  List.iter (Lib.Env.add_func env) comp_unit;
+  match Lib.Env.find_func env "main" with
+  | FuncDef (_, _, _, body) ->
+      let ret_val =
+        try
+          Lib.Interpreter.eval_stmt env body;
+          Lib.Env.Number 0  (* 如果 main 没有return，默认0 *)
+        with
+        | Lib.Env.Return (Some v) -> v
+        | Lib.Env.Return None -> Lib.Env.Number 0
+      in
+      (match ret_val with
+       | Lib.Env.Number n -> Printf.printf "Program returned: %d\n" n
+       | _ -> Printf.printf "Program returned a function\n")
+  | exception _ -> Printf.eprintf "No 'main' function found\n"
+
 
 let () =
   match Array.length Sys.argv with
@@ -109,7 +129,10 @@ let () =
         Printf.printf "=== Parsing file: %s ===\n" filename;
         try
           let ast = parse_file filename in
-          print_comp_unit ast
+          print_comp_unit ast;
+
+          run_comp_unit ast
+
         with
         | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
         | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
@@ -122,7 +145,10 @@ let () =
       Printf.printf "=== Parsing file: %s ===\n" filename;
       (try
         let ast = parse_file filename in
-        print_comp_unit ast
+        print_comp_unit ast;
+
+        run_comp_unit ast
+
       with
       | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
       | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
