@@ -121,6 +121,21 @@ let run_comp_unit comp_unit =
        | _ -> Printf.printf "Program returned a function\n")
   | exception _ -> Printf.eprintf "No 'main' function found\n"
 
+let string_of_tac = function
+  | Lib.Transfer.TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
+  | Lib.Transfer.TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
+  | Lib.Transfer.TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
+  | Lib.Transfer.TacLabel l -> l ^ ":"
+  | Lib.Transfer.TacGoto l -> "goto " ^ l
+  | Lib.Transfer.TacIfGoto (cond, l) -> Printf.sprintf "if %s goto %s" cond l
+  | Lib.Transfer.TacParam t -> "param " ^ t
+  | Lib.Transfer.TacCall (t, f, n) -> Printf.sprintf "%s = call %s, %d" t f n
+  | Lib.Transfer.TacReturn None -> "return"
+  | Lib.Transfer.TacReturn (Some t) -> "return " ^ t
+  | Lib.Transfer.TacComment s -> "# " ^ s
+
+let print_tac tac_list =
+  List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list
 
 let () =
   match Array.length Sys.argv with
@@ -131,7 +146,10 @@ let () =
           let ast = parse_file filename in
           print_comp_unit ast;
 
-          run_comp_unit ast
+          run_comp_unit ast;
+
+          let tac_list = Lib.Transfer.gen_comp_unit ast in
+          print_tac tac_list;
 
         with
         | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
@@ -147,7 +165,10 @@ let () =
         let ast = parse_file filename in
         print_comp_unit ast;
 
-        run_comp_unit ast
+        run_comp_unit ast;
+
+        let tac_list = Lib.Transfer.gen_comp_unit ast in
+        print_tac tac_list;
 
       with
       | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
