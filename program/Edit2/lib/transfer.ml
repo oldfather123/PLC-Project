@@ -11,6 +11,7 @@ type tac =
   | TacCall of string * string * int
   | TacReturn of string option
   | TacComment of string
+  | TacPhi of string * string * string
 
 let temp_counter = ref 0
 let label_counter = ref 0
@@ -94,24 +95,38 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
     code := !code @ [TacUnOp (cond_not_t, "!", cond_t)];
     (match else_s_opt with
       | Some else_s ->
-          (* 复制环境，分支独立 *)
          let l_else = new_label () in
          let l_end = new_label () in
          code := !code @ [TacIfGoto (cond_not_t, l_else)];
          let env_then = Hashtbl.copy env in
-         gen_stmt then_s env_then code;
-         code := !code @ [TacGoto l_end];
-         code := !code @ [TacLabel l_else];
-         let env_else = Hashtbl.copy env in
-         gen_stmt else_s env_else code;
-         code := !code @ [TacLabel l_end]
-          (* 这里未实现phi合并，适合简单情况 *)
+         let code_then = ref [] in
+         gen_stmt then_s env_then code_then;
+         code_then := !code_then @ [TacGoto l_end];
+         (* Hashtbl.iter (fun k v -> Hashtbl.replace env k v) env_then; *)
+         let env_else = Hashtbl.copy env_then in
+         let code_else = ref [] in
+         code_else := !code_else @ [TacLabel l_else];
+         gen_stmt else_s env_else code_else;
+         code := !code @ !code_then @ !code_else;
+         code := !code @ [TacLabel l_end];
+          let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_then [] in
+          let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_else vars in
+          List.iter (fun var_name ->
+            let then_ver = try Hashtbl.find env_then var_name with Not_found -> Hashtbl.find env var_name in
+            let else_ver = try Hashtbl.find env_else var_name with Not_found -> Hashtbl.find env var_name in
+            let then_ssa = ssa_var_name var_name then_ver in
+            let else_ssa = ssa_var_name var_name else_ver in
+            if then_ssa <> else_ssa then
+            let merged_ver = max then_ver else_ver + 1 in
+            Hashtbl.replace env var_name merged_ver;
+            let phi_name = ssa_var_name var_name merged_ver in
+            code := !code @ [TacPhi (phi_name, then_ssa, else_ssa)]
+          ) vars  
       | None ->
         let l_end = new_label () in
         code := !code @ [TacIfGoto (cond_not_t, l_end)];
         gen_stmt then_s env code;
         code := !code @ [TacLabel l_end])
-
    | WhileStmt (cond, body) ->
       let l_cond = new_label () in
       let l_body = new_label () in

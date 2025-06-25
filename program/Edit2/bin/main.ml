@@ -133,6 +133,7 @@ let string_of_tac = function
   | Lib.Transfer.TacReturn None -> "return"
   | Lib.Transfer.TacReturn (Some t) -> "return " ^ t
   | Lib.Transfer.TacComment s -> "# " ^ s
+  | Lib.Transfer.TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
 let print_tac tac_list =
   List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list

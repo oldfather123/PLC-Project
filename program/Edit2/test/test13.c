@@ -1,10 +1,12 @@
 int main () {
     int x = 0;
+    int y = 0;
     if (1 == 0) {
         x = 1;
+        y = 2;
     }
     else {
-        x = 2;
+        x = 3;
     }
-    return x;
+    return y;
 }

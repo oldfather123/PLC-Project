@@ -34,10 +34,10 @@ let const_fold_and_propagate tac_list =
     | "!" -> if a = 0 then "1" else "0"
     | _ -> failwith "unsupported unop"
   in
-  let replace_var x =
+  let rec replace_var x =
     if Hashtbl.mem env x then
       let v = Hashtbl.find env x in
-      if is_int v then v else x
+      if is_int v then v else if v = x then x else replace_var v
     else x
   in
   List.filter_map (fun tac ->
@@ -79,7 +79,7 @@ let const_fold_and_propagate tac_list =
     | TacCall (x, f, n) -> Hashtbl.remove env x; Some (TacCall (x, f, n))
     | TacReturn (Some a) -> Some (TacReturn (Some (replace_var a)))
     | TacIfGoto (a, l) -> Some (TacIfGoto (replace_var a, l))
-    | TacLabel _ | TacGoto _ | TacReturn None | TacComment _ -> Some tac
+    | TacLabel _ | TacGoto _ | TacReturn None | TacComment _ | TacPhi _ -> Some tac
   ) tac_list
 
 (* 复制传播 *)
@@ -111,6 +111,7 @@ let copy_propagate tac_list =
 (* 死代码消除 *)
 let dead_code_elimination tac_list =
   let used = Hashtbl.create 32 in
+  let label_used = Hashtbl.create 32 in
   (* 标记所有被用到的变量 *)
   List.iter (function
     | TacAssign (_, v) -> if not (is_int v) then Hashtbl.replace used v ()
@@ -122,17 +123,60 @@ let dead_code_elimination tac_list =
     | TacCall (x, _, _) -> Hashtbl.replace used x ()
     | TacReturn (Some a) -> if not (is_int a) then Hashtbl.replace used a ()
     | TacIfGoto (a, _) -> if not (is_int a) then Hashtbl.replace used a ()
+    | TacGoto l -> Hashtbl.replace label_used l ()
     | _ -> ()
   ) tac_list;
   (* 只保留被用到的赋值 *)
   List.filter (function
     | TacAssign (x, _) -> Hashtbl.mem used x
+    | TacLabel l -> Hashtbl.mem label_used l
     | _ -> true
   ) tac_list
 
+(* if-else恒条件分支消除 *)
+type branch =
+  | Both
+  | OnlyThen
+  | OnlyElse
+
+let optimize_if_else tac_list =
+  let rec aux acc branch = function
+    | TacIfGoto (cond, l_else) :: rest when is_int cond ->
+      if cond = "1" then
+        (* 只走 else 分支 *)
+        let rec drop_until_label = function
+          | TacLabel l :: xs when l = l_else -> TacLabel l :: xs
+          | _ :: xs -> drop_until_label xs
+          | [] -> []
+        in
+        aux acc OnlyElse (drop_until_label rest)
+      else
+        (* 只走 then 分支 *)
+        let rec take_until_goto = function
+          | TacGoto _ :: xs -> xs
+          | x :: xs -> x :: take_until_goto xs
+          | [] -> []
+        in
+        aux (acc @ take_until_goto rest) OnlyThen []
+    | TacPhi (x, a, b) :: xs ->
+      (match branch with
+      | OnlyThen -> aux (acc @ [TacAssign (x, a)]) branch xs
+      | OnlyElse -> aux (acc @ [TacAssign (x, b)]) branch xs
+      | Both -> aux (acc @ [TacPhi (x, a, b)]) branch xs)
+    | x :: xs -> aux (acc @ [x]) branch xs
+    | [] -> acc
+  in
+  aux [] Both tac_list
+
 (* 综合优化流程 *)
+let rec fixpoint f x =
+  let x' = f x in
+  if x' = x then x else fixpoint f x'
 let optimize tac_list =
-  tac_list
+  fixpoint (fun code ->
+  code
   |> const_fold_and_propagate
+  |> optimize_if_else
   |> copy_propagate
   |> dead_code_elimination
+  ) tac_list
