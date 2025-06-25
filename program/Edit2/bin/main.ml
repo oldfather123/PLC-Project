@@ -149,7 +149,10 @@ let () =
           run_comp_unit ast;
 
           let tac_list = Lib.Transfer.gen_comp_unit ast in
+          Printf.printf "==Original TAC==\n";
           print_tac tac_list;
+          Printf.printf "==Optimized TAC==\n";
+          print_tac (Lib.Ssa_opt.optimize tac_list);
 
         with
         | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
@@ -168,7 +171,10 @@ let () =
         run_comp_unit ast;
 
         let tac_list = Lib.Transfer.gen_comp_unit ast in
+        Printf.printf "==Original TAC==\n";
         print_tac tac_list;
+        Printf.printf "==Optimized TAC==\n";
+        print_tac (Lib.Ssa_opt.optimize tac_list);
 
       with
       | Sys_error msg -> Printf.eprintf "Error: %s\n" msg

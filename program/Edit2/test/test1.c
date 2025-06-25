@@ -17,3 +17,13 @@ int no_params() {
 void no_params_void() {
     int x = 1;
 }
+
+int main() {
+    int x = 1;
+    int y = 2;
+    int z = add(x, y);  // 调用 add 函数
+    simple();           // 调用 simple 函数
+    int result = no_params() + z;  // 调用无参数函数
+    no_params_void();  // 调用无参数 void 函数
+    return result;     // 返回结果
+}
