@@ -1,0 +1,4 @@
+(executable
+ (public_name Edit4)
+ (name main)
+ (libraries lib))

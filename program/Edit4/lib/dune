@@ -1,0 +1,6 @@
+(library
+ (name lib)
+ (modules ast parser lexer interpreter ir_generator))
+
+ (ocamllex lexer)
+ (ocamlyacc parser)

@@ -1,0 +1,5 @@
+(executable
+ (public_name test_runner)
+ (name test_runner)
+ (modules test_runner ast_test interpreter_test ir_test)
+ (libraries lib))
