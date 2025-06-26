@@ -1,0 +1,80 @@
+open Transfer
+
+type riscv_inst =
+  | RAdd of string * string * string
+  | RSub of string * string * string
+  | RMul of string * string * string
+  | RDiv of string * string * string
+  | RRem of string * string * string
+  | RSlt of string * string * string
+  | RSle of string * string * string
+  | RSgt of string * string * string
+  | RSge of string * string * string
+  | RSeqz of string * string
+  | RNeg of string * string
+  | RMv of string * string
+  | RLi of string * int
+  | RLabel of string
+  | RJ of string
+  | RBnez of string * string
+  | RSw of string
+  | RLw of string * int
+  | RAddi of string * string * int
+  | RCall of string
+  | RMvFromA0 of string
+  | RRet
+  | RComment of string
+
+let base_var s =
+  try String.sub s 0 (String.rindex s '_')
+  with _ -> s
+
+let tac_to_riscv tac_list =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | TacAssign (x, y) :: xs ->
+        aux (RMv (base_var x, base_var y) :: acc) xs
+    | TacBinOp (x, a, op, b) :: xs ->
+        let rx = base_var x and ra = base_var a and rb = base_var b in
+        let inst = match op with
+          | "+" -> RAdd (rx, ra, rb)
+          | "-" -> RSub (rx, ra, rb)
+          | "*" -> RMul (rx, ra, rb)
+          | "/" -> RDiv (rx, ra, rb)
+          | "%" -> RRem (rx, ra, rb)
+          | "==" -> RSub (rx, ra, rb)
+          | "!=" -> RSub (rx, ra, rb)
+          | "<" -> RSlt (rx, ra, rb)
+          | "<=" -> RSle (rx, ra, rb)
+          | ">" -> RSgt (rx, ra, rb)
+          | ">=" -> RSge (rx, ra, rb)
+          | _ -> RAdd (rx, ra, rb)
+        in
+        aux (inst :: acc) xs
+    | TacUnOp (x, op, a) :: xs ->
+        let rx = base_var x and ra = base_var a in
+        let inst = match op with
+          | "!" -> RSeqz (rx, ra)
+          | "-" -> RNeg (rx, ra)
+          | _ -> RComment ("unop " ^ op)
+        in
+        aux (inst :: acc) xs
+    | TacLabel l :: xs -> aux (RLabel l :: acc) xs
+    | TacGoto l :: xs -> aux (RJ l :: acc) xs
+    | TacIfGoto (a, l) :: xs -> aux (RBnez (base_var a, l) :: acc) xs
+    | TacParam a :: xs ->
+        aux (RSw (base_var a) :: RAddi ("sp", "sp", -4) :: acc) xs
+    | TacCall (x, f, n) :: xs ->
+        let rec lw_args i acc =
+          if i < 0 then acc
+          else lw_args (i-1) (RLw (Printf.sprintf "a%d" i, i*4) :: acc)
+        in
+        let insts = (lw_args (n-1) [])
+                  @ [RAddi ("sp", "sp", n*4); RCall f; RMvFromA0 (base_var x)] in
+        aux (List.rev_append insts acc) xs
+    | TacReturn (Some a) :: xs -> aux (RRet :: RMv ("a0", base_var a) :: acc) xs
+    | TacReturn None :: xs -> aux (RRet :: acc) xs
+    | TacComment s :: xs -> aux (RComment s :: acc) xs
+    | TacPhi (_, _, _) :: xs -> aux acc xs
+  in
+  aux [] tac_list

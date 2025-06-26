@@ -1,6 +1,8 @@
 open Lib.Ast
 open Lib.Lexer
 open Lib.Parser
+open Lib.Transfer
+open Lib.Riscv_gen
 
 (* 打印AST的辅助函数 *)
 let print_type_specifier = function
@@ -122,80 +124,49 @@ let run_comp_unit comp_unit =
   | exception _ -> Printf.eprintf "No 'main' function found\n"
 
 let string_of_tac = function
-  | Lib.Transfer.TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
-  | Lib.Transfer.TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
-  | Lib.Transfer.TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
-  | Lib.Transfer.TacLabel l -> l ^ ":"
-  | Lib.Transfer.TacGoto l -> "goto " ^ l
-  | Lib.Transfer.TacIfGoto (cond, l) -> Printf.sprintf "if %s goto %s" cond l
-  | Lib.Transfer.TacParam t -> "param " ^ t
-  | Lib.Transfer.TacCall (t, f, n) -> Printf.sprintf "%s = call %s, %d" t f n
-  | Lib.Transfer.TacReturn None -> "return"
-  | Lib.Transfer.TacReturn (Some t) -> "return " ^ t
-  | Lib.Transfer.TacComment s -> "# " ^ s
-  | Lib.Transfer.TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
+  | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
+  | TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
+  | TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
+  | TacLabel l -> l ^ ":"
+  | TacGoto l -> "goto " ^ l
+  | TacIfGoto (cond, l) -> Printf.sprintf "if %s goto %s" cond l
+  | TacParam t -> "param " ^ t
+  | TacCall (t, f, n) -> Printf.sprintf "%s = call %s, %d" t f n
+  | TacReturn None -> "return"
+  | TacReturn (Some t) -> "return " ^ t
+  | TacComment s -> "# " ^ s
+  | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
 let print_tac tac_list =
   List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list
 
-(* 提取原始变量名 *)
-let base_var s =
-  try String.sub s 0 (String.rindex s '_')
-  with _ -> s
+let print_riscv_inst = function
+  | RAdd (rd, rs1, rs2) -> Printf.printf "add %s, %s, %s\n" rd rs1 rs2
+  | RSub (rd, rs1, rs2) -> Printf.printf "sub %s, %s, %s\n" rd rs1 rs2
+  | RMul (rd, rs1, rs2) -> Printf.printf "mul %s, %s, %s\n" rd rs1 rs2
+  | RDiv (rd, rs1, rs2) -> Printf.printf "div %s, %s, %s\n" rd rs1 rs2
+  | RRem (rd, rs1, rs2) -> Printf.printf "rem %s, %s, %s\n" rd rs1 rs2
+  | RSlt (rd, rs1, rs2) -> Printf.printf "slt %s, %s, %s\n" rd rs1 rs2
+  | RSle (rd, rs1, rs2) -> Printf.printf "sle %s, %s, %s\n" rd rs1 rs2
+  | RSgt (rd, rs1, rs2) -> Printf.printf "sgt %s, %s, %s\n" rd rs1 rs2
+  | RSge (rd, rs1, rs2) -> Printf.printf "sge %s, %s, %s\n" rd rs1 rs2
+  | RSeqz (rd, rs) -> Printf.printf "seqz %s, %s\n" rd rs
+  | RNeg (rd, rs) -> Printf.printf "neg %s, %s\n" rd rs
+  | RMv (rd, rs) -> Printf.printf "mv %s, %s\n" rd rs
+  | RLi (rd, imm) -> Printf.printf "li %s, %d\n" rd imm
+  | RLabel l -> Printf.printf "%s:\n" l
+  | RJ l -> Printf.printf "j %s\n" l
+  | RBnez (rs, l) -> Printf.printf "bnez %s, %s\n" rs l
+  | RSw rs -> Printf.printf "sw %s, 0(sp)\n" rs
+  | RLw (rd, offset) -> Printf.printf "lw %s, %d(sp)\n" rd offset
+  | RAddi (rd, rs, imm) -> Printf.printf "addi %s, %s, %d\n" rd rs imm
+  | RCall f -> Printf.printf "call %s\n" f
+  | RMvFromA0 rd -> Printf.printf "mv %s, a0\n" rd
+  | RRet -> Printf.printf "ret\n"
+  | RComment s -> Printf.printf "# %s\n" s
 
-let print_riscv tac_list =
-  List.iter (function
-    | Lib.Transfer.TacAssign (x, y) ->
-        Printf.printf "mv %s, %s\n" (base_var x) (base_var y)
-    | Lib.Transfer.TacBinOp (x, a, op, b) ->
-        let rx = base_var x in
-        let ra = base_var a in
-        let rb = base_var b in
-        let r_op = match op with
-          | "+" -> "add"
-          | "-" -> "sub"
-          | "*" -> "mul"
-          | "/" -> "div"
-          | "%" -> "rem"
-          | "==" -> "sub"  (* 结果为0则相等，需配合seqz *)
-          | "!=" -> "sub"  (* 结果非0则不等，需配合snez *)
-          | "<" -> "slt"
-          | "<=" -> "sle"
-          | ">" -> "sgt"
-          | ">=" -> "sge"
-          | _ -> "add"
-        in
-        Printf.printf "%s %s, %s, %s\n" r_op rx ra rb
-    | Lib.Transfer.TacUnOp (x, op, a) ->
-        let rx = base_var x in
-        let ra = base_var a in
-        (match op with
-        | "!" -> Printf.printf "seqz %s, %s\n" rx ra
-        | "-" -> Printf.printf "neg %s, %s\n" rx ra
-        | _ -> ())
-    | Lib.Transfer.TacLabel l -> Printf.printf "%s:\n" l
-    | Lib.Transfer.TacGoto l -> Printf.printf "j %s\n" l
-    | Lib.Transfer.TacIfGoto (a, l) ->
-        Printf.printf "bnez %s, %s\n" (base_var a) l
-    | Lib.Transfer.TacParam a ->
-        Printf.printf "addi sp, sp, -4\n";
-        Printf.printf "sw %s, 0(sp)\n" (base_var a)
-    | Lib.Transfer.TacCall (x, f, n) ->
-        for i = n - 1 downto 0 do
-          Printf.printf "lw a%d, %d(sp)\n" i (i * 4)
-        done;
-        Printf.printf "addi sp, sp, %d\n" (n * 4);
-        Printf.printf "call %s\n" f;
-        Printf.printf "mv %s, a0\n" (base_var x)
-    | Lib.Transfer.TacReturn (Some a) ->
-        Printf.printf "mv a0, %s\nret\n" (base_var a)
-    | Lib.Transfer.TacReturn None ->
-        Printf.printf "ret\n"
-    | Lib.Transfer.TacComment s ->
-        Printf.printf "# %s\n" s
-    | Lib.Transfer.TacPhi (_, _, _) ->
-        ()  (* phi节点在RISC-V中无需显式处理 *)
-  ) tac_list
+let print_riscv riscv_list =
+  List.iter print_riscv_inst riscv_list
 
 let () =
   match Array.length Sys.argv with
@@ -212,11 +183,13 @@ let () =
           Printf.printf "==Original TAC==\n";
           print_tac tac_list;
           Printf.printf "==Original RISC-V Code==\n";
-          print_riscv (tac_list);
+          let riscv_list = tac_to_riscv tac_list in
+          print_riscv (riscv_list);
           Printf.printf "==Optimized TAC==\n";
           print_tac (Lib.Ssa_opt.optimize tac_list);
           Printf.printf "==Optimized RISC-V Code==\n";
-          print_riscv (Lib.Ssa_opt.optimize tac_list);
+          let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
+          print_riscv (riscv_list);
 
         with
         | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
@@ -238,11 +211,13 @@ let () =
         Printf.printf "==Original TAC==\n";
         print_tac tac_list;
         Printf.printf "==Original RISC-V Code==\n";
-        print_riscv (tac_list);
+        let riscv_list = tac_to_riscv tac_list in
+        print_riscv (riscv_list);
         Printf.printf "==Optimized TAC==\n";
         print_tac (Lib.Ssa_opt.optimize tac_list);
         Printf.printf "==Optimized RISC-V Code==\n";
-        print_riscv (Lib.Ssa_opt.optimize tac_list);
+        let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
+        print_riscv (riscv_list);
 
       with
       | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
