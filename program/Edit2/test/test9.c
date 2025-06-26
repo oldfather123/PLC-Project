@@ -26,3 +26,27 @@ void call_with_different_params() {
     int d = three_params(1, 2, 3);
     int e = many_params(1, 2, 3, 4, 5);
 }
+
+/*
+# function no_param
+return 0
+
+# function one_param
+return x
+
+# function two_params
+return x + y
+
+# function three_params
+return x + y + z
+
+# function many_params
+return a + b + c + d + e
+
+# function call_with_different_params
+t8 = call no_param, 0
+t9 = call one_param, 1
+t10 = call two_params, 2
+t11 = call three_params, 3
+t12 = call many_params, 5
+*/

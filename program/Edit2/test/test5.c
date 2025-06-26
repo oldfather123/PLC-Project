@@ -33,3 +33,11 @@ void empty_blocks() {
     while (0) {
     }
 }
+
+/*
+# function nested_blocks
+return
+
+# function empty_blocks
+return
+*/

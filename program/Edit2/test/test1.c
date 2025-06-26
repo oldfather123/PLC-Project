@@ -27,3 +27,18 @@ int main() {
     no_params_void();  // 调用无参数 void 函数
     return result;     // 返回结果
 }
+
+/*
+# function add
+return x + y
+
+# function simple
+
+# function no_params
+return 42
+
+# function no_params_void
+
+# function main
+return 44
+*/

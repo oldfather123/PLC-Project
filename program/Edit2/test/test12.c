@@ -12,3 +12,11 @@ int main() {
     int g = func(a);
     return g;           // 只用到了 g
 }
+
+/*
+# function func
+return 2 * (a + 4)
+
+# function main
+return 14
+*/

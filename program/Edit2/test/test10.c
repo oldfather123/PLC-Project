@@ -64,3 +64,64 @@ void main() {
         result_gcd = result_gcd + 1;
     }
 }
+
+/*
+# function gcd
+L0:
+t0 = b_0 != 0
+if t0 == 0 goto L1
+t1 = b_0
+t2 = a_0 % b_0
+b_0 = t2
+a_0 = t1
+goto L0
+L1:
+return a_0
+
+# function fibonacci
+t3 = n_0 <= 1
+if t3 goto L2
+a_0 = 0
+b_0 = 1
+i_0 = 2
+L3:
+t4 = i_0 <= n_0
+if t4 == 0 goto L4
+t5 = a_0 + b_0
+a_0 = b_0
+b_0 = t5
+i_0 = i_0 + 1
+goto L3
+L4:
+return b_0
+L2:
+return n_0
+
+# function is_prime
+t6 = n_0 <= 1
+if t6 goto L5
+t7 = n_0 <= 3
+if t7 goto L6
+t8 = n_0 % 2
+if t8 == 0 goto L7
+i_0 = 3
+L8:
+t9 = i_0 * i_0
+t10 = t9 <= n_0
+if t10 == 0 goto L9
+t11 = n_0 % i_0
+if t11 == 0 goto L7
+i_0 = i_0 + 2
+goto L8
+L9:
+return 1
+L7:
+return 0
+L6:
+return 1
+L5:
+return 0
+
+# function main
+return gcd(48, 18)
+*/

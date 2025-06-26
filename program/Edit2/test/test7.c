@@ -23,3 +23,11 @@ int complex_expressions() {
 int deeply_nested() {
     return ((1 + 2) * (3 + 4)) - ((5 - 2) * (8 / 2));
 }
+
+/*
+# function complex_expressions
+return 26
+
+# function deeply_nested
+return 9
+*/
