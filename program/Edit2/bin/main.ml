@@ -138,6 +138,65 @@ let string_of_tac = function
 let print_tac tac_list =
   List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list
 
+(* 提取原始变量名 *)
+let base_var s =
+  try String.sub s 0 (String.rindex s '_')
+  with _ -> s
+
+let print_riscv tac_list =
+  List.iter (function
+    | Lib.Transfer.TacAssign (x, y) ->
+        Printf.printf "mv %s, %s\n" (base_var x) (base_var y)
+    | Lib.Transfer.TacBinOp (x, a, op, b) ->
+        let rx = base_var x in
+        let ra = base_var a in
+        let rb = base_var b in
+        let r_op = match op with
+          | "+" -> "add"
+          | "-" -> "sub"
+          | "*" -> "mul"
+          | "/" -> "div"
+          | "%" -> "rem"
+          | "==" -> "sub"  (* 结果为0则相等，需配合seqz *)
+          | "!=" -> "sub"  (* 结果非0则不等，需配合snez *)
+          | "<" -> "slt"
+          | "<=" -> "sle"
+          | ">" -> "sgt"
+          | ">=" -> "sge"
+          | _ -> "add"
+        in
+        Printf.printf "%s %s, %s, %s\n" r_op rx ra rb
+    | Lib.Transfer.TacUnOp (x, op, a) ->
+        let rx = base_var x in
+        let ra = base_var a in
+        (match op with
+        | "!" -> Printf.printf "seqz %s, %s\n" rx ra
+        | "-" -> Printf.printf "neg %s, %s\n" rx ra
+        | _ -> ())
+    | Lib.Transfer.TacLabel l -> Printf.printf "%s:\n" l
+    | Lib.Transfer.TacGoto l -> Printf.printf "j %s\n" l
+    | Lib.Transfer.TacIfGoto (a, l) ->
+        Printf.printf "bnez %s, %s\n" (base_var a) l
+    | Lib.Transfer.TacParam a ->
+        Printf.printf "addi sp, sp, -4\n";
+        Printf.printf "sw %s, 0(sp)\n" (base_var a)
+    | Lib.Transfer.TacCall (x, f, n) ->
+        for i = n - 1 downto 0 do
+          Printf.printf "lw a%d, %d(sp)\n" i (i * 4)
+        done;
+        Printf.printf "addi sp, sp, %d\n" (n * 4);
+        Printf.printf "call %s\n" f;
+        Printf.printf "mv %s, a0\n" (base_var x)
+    | Lib.Transfer.TacReturn (Some a) ->
+        Printf.printf "mv a0, %s\nret\n" (base_var a)
+    | Lib.Transfer.TacReturn None ->
+        Printf.printf "ret\n"
+    | Lib.Transfer.TacComment s ->
+        Printf.printf "# %s\n" s
+    | Lib.Transfer.TacPhi (_, _, _) ->
+        ()  (* phi节点在RISC-V中无需显式处理 *)
+  ) tac_list
+
 let () =
   match Array.length Sys.argv with
   | 1 ->  
@@ -152,8 +211,12 @@ let () =
           let tac_list = Lib.Transfer.gen_comp_unit ast in
           Printf.printf "==Original TAC==\n";
           print_tac tac_list;
+          Printf.printf "==Original RISC-V Code==\n";
+          print_riscv (tac_list);
           Printf.printf "==Optimized TAC==\n";
           print_tac (Lib.Ssa_opt.optimize tac_list);
+          Printf.printf "==Optimized RISC-V Code==\n";
+          print_riscv (Lib.Ssa_opt.optimize tac_list);
 
         with
         | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
@@ -174,8 +237,12 @@ let () =
         let tac_list = Lib.Transfer.gen_comp_unit ast in
         Printf.printf "==Original TAC==\n";
         print_tac tac_list;
+        Printf.printf "==Original RISC-V Code==\n";
+        print_riscv (tac_list);
         Printf.printf "==Optimized TAC==\n";
         print_tac (Lib.Ssa_opt.optimize tac_list);
+        Printf.printf "==Optimized RISC-V Code==\n";
+        print_riscv (Lib.Ssa_opt.optimize tac_list);
 
       with
       | Sys_error msg -> Printf.eprintf "Error: %s\n" msg

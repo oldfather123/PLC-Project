@@ -129,7 +129,7 @@ let dead_code_elimination tac_list =
   (* 只保留被用到的赋值 *)
   List.filter (function
     | TacAssign (x, _) -> Hashtbl.mem used x
-    | TacLabel l -> Hashtbl.mem label_used l
+    (* | TacLabel l -> Hashtbl.mem label_used l *)
     | _ -> true
   ) tac_list
 
