@@ -1,10 +1,14 @@
 int main () {
-    int x = 0;
-    if (1 == 0) {
-        x = 1;
-    }
-    else {
-        x = 2;
+    int x = 2;
+    // x = x - 1;
+    // if (x == 0) {
+    //     x = x - 1;
+    // }
+    // else {
+    //     x = x - 2;
+    // }
+    while (x != 0) {
+        x = x - 1;
     }
     return x;
 }

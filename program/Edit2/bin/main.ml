@@ -32,7 +32,7 @@ let rec print_expression = function
   | Number n -> string_of_int n
   | UnaryOp (op, e) -> Printf.sprintf "(%s%s)" (print_unary_operator op) (print_expression e)
   | BinaryOp (e1, op, e2) -> 
-      Printf.sprintf "(%s %s %s)" (print_expression e1) (print_binary_operator op) (print_expression e2)
+      Printf.sprintf "%s %s %s" (print_expression e1) (print_binary_operator op) (print_expression e2)
   | FunctionCall (name, args) ->
       let arg_strs = List.map print_expression args in
       Printf.sprintf "%s(%s)" name (String.concat ", " arg_strs)
