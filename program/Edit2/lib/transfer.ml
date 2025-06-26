@@ -103,7 +103,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
          gen_stmt then_s env_then code_then;
          code_then := !code_then @ [TacGoto l_end];
          (* Hashtbl.iter (fun k v -> Hashtbl.replace env k v) env_then; *)
-         let env_else = Hashtbl.copy env_then in
+         let env_else = Hashtbl.copy env in
          let code_else = ref [] in
          code_else := !code_else @ [TacLabel l_else];
          gen_stmt else_s env_else code_else;
@@ -116,7 +116,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
             let else_ver = try Hashtbl.find env_else var_name with Not_found -> Hashtbl.find env var_name in
             let then_ssa = ssa_var_name var_name then_ver in
             let else_ssa = ssa_var_name var_name else_ver in
-            if then_ssa <> else_ssa then
+            (* if then_ssa <> else_ssa then *)
             let merged_ver = max then_ver else_ver + 1 in
             Hashtbl.replace env var_name merged_ver;
             let phi_name = ssa_var_name var_name merged_ver in
@@ -130,11 +130,27 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
    | WhileStmt (cond, body) ->
       let l_cond = new_label () in
       let l_body = new_label () in
-      let l_continue = new_label () in
       let l_end = new_label () in
-
-      continue_stack := l_continue :: !continue_stack;
+      (* 检查循环体是否包含continue语句的标志 *)
+      let has_continue = ref false in
+      (* 检查循环体中是否有continue语句 *)
+      let rec check_continue stmt =
+        match stmt with
+        | ContinueStmt -> has_continue := true
+        | Block stmts -> List.iter check_continue stmts
+        | IfStmt (_, then_s, Some else_s) ->
+            check_continue then_s;
+            check_continue else_s
+        | IfStmt (_, then_s, None) ->
+            check_continue then_s
+        | WhileStmt (_, s) -> check_continue s
+        | _ -> ()
+      in
+      check_continue body;
       break_stack := l_end :: !break_stack;
+    if (!has_continue = true) then begin
+      let l_continue = new_label () in
+      continue_stack := l_continue :: !continue_stack;
       code := !code @ [TacGoto l_cond];
       code := !code @ [TacLabel l_cond];
       let cond_t = gen_expr cond env code in
@@ -145,10 +161,24 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       gen_stmt body env code;
       code := !code @ [TacGoto l_cond]; 
       code := !code @ [TacLabel l_continue];
-      code := !code @ [TacGoto l_cond];   
+      code := !code @ [TacGoto l_cond]; 
       code := !code @ [TacLabel l_end];
       continue_stack := List.tl !continue_stack;
       break_stack := List.tl !break_stack
+    end
+    else begin
+      code := !code @ [TacGoto l_cond];
+      code := !code @ [TacLabel l_cond];
+      let cond_t = gen_expr cond env code in
+      let cond_not_t = new_temp () in
+      code := !code @ [TacUnOp (cond_not_t, "!", cond_t)];
+      code := !code @ [TacIfGoto (cond_not_t, l_end)];                 
+      code := !code @ [TacLabel l_body];
+      gen_stmt body env code;
+      code := !code @ [TacGoto l_cond];  
+      code := !code @ [TacLabel l_end];
+      break_stack := List.tl !break_stack
+    end
 
    | BreakStmt ->
       (match !break_stack with

@@ -124,6 +124,9 @@ let dead_code_elimination tac_list =
     | TacReturn (Some a) -> if not (is_int a) then Hashtbl.replace used a ()
     | TacIfGoto (a, _) -> if not (is_int a) then Hashtbl.replace used a ()
     | TacGoto l -> Hashtbl.replace label_used l ()
+    | TacPhi (_, a, b) ->  (* 新增：递归标记 phi 参数 *)
+      if not (is_int a) then Hashtbl.replace used a ();
+      if not (is_int b) then Hashtbl.replace used b ()
     | _ -> ()
   ) tac_list;
   (* 只保留被用到的赋值 *)
