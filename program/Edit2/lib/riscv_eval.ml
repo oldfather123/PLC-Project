@@ -51,28 +51,56 @@ let eval (prog : riscv_inst list) ?(state=State.create ()) () : State.t =
        | RSge (d,a,b) -> sv d (if v a >= v b then 1 else 0); next ()
        | RSeqz (d,a)  -> sv d (if v a = 0 then 1 else 0); next ()
        | RNeg (d,a)   -> sv d (- v a); next ()
-       | RMv  (d,a)   -> sv d (v a); next ()
+       | RMv (d, a) ->
+          let value = match int_of_string_opt a with
+            | Some imm -> imm               
+            | None     -> v a          
+          in sv d value; next (); 
        | RLi  (d,i)   -> sv d i; next ()
        | RJ l         -> goto (Hashtbl.find label_map l)
        | RBnez (r,l)  ->
            if v r <> 0 then goto (Hashtbl.find label_map l) else next ()
-       | RPush (r,ofs) ->
-           let addr = st.sp + ofs in
-           Hashtbl.replace st.mem addr (v r); next ()
-       | RPop (d,ofs) ->
-           let addr = st.sp + ofs in
-           sv d (try Hashtbl.find st.mem addr with Not_found -> 0); next ()
+       | RPush (r, ofs) ->
+    let value =
+      match int_of_string_opt r with
+      | Some imm -> imm
+      | None -> v r
+    in
+    let sp_old = v "sp" in       (* 先取当前栈指针 *)
+    let sp_new = sp_old - 4 + ofs in  (* 栈指针减4，再加偏移 *)
+    sv "sp" (sp_old - 4);        (* 栈指针更新：-4，ofs一般用于访问偏移地址，不影响sp寄存器本身 *)
+    Hashtbl.replace st.mem sp_new value; (* 把值写入内存，地址是新栈顶加偏移 *)
+    next ()
+
+
+    | RPop (d, ofs) ->
+    let sp_old = v "sp" in                (* 读取当前栈指针 *)
+    let addr = sp_old + ofs in            (* 计算内存地址 *)
+    let value = try Hashtbl.find st.mem addr with Not_found -> 0 in
+    sv d value;                          (* 把栈顶数据读入寄存器 d *)
+    sv "sp" (sp_old + 4);                (* 栈指针上移4字节 *)
+    next ()
+
+
        | RCall fn ->
            Stack.push (st.pc + 1) st.call_stack;
            goto (Hashtbl.find label_map fn)
        | RRet ret_opt ->
-           (match ret_opt with Some r -> sv "a0" (v r) | None -> ());
+          (match ret_opt with
+          | Some r ->
+            let value =
+            match int_of_string_opt r with
+              | Some imm -> imm       
+              | None     -> v r
+            in
+            sv "a0" value
+     | None -> ());
            if Stack.is_empty st.call_stack
-           then st.pc <- List.length prog         (* 结束程序 *)
+           then st.pc <- List.length prog         
            else goto (Stack.pop st.call_stack)
        | RLabel _ | RComment _ -> next ()
       );
-      step st                                        (* 再递归跑下一条 *)
+      step st                                       
     )
   in
   step state
