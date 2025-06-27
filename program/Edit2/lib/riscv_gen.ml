@@ -1,4 +1,5 @@
 open Transfer
+open Ast
 
 type riscv_inst =
   | RAdd of string * string * string
@@ -64,10 +65,14 @@ let tac_to_riscv tac_list =
     | TacParam a :: xs ->
         sp := !sp + 1;  
         aux (RPush (base_var a, !sp * 4) :: acc) xs;
-    | TacCall (x, f, n) :: xs ->
-        (* 约定参数总是a0,a1,...,an-1 *)
-        let pop_vars = List.init n (fun i -> ("a" ^ string_of_int i, i)) in
-        let pops = List.map (fun (v, ofs) -> RPop (v, ofs * 4)) pop_vars in
+    | TacCall (x, f, a, n) :: xs ->
+        let identifier_name (id : identifier) : string = id in
+        let an = List.map identifier_name a in
+        let pops =
+          List.mapi (fun i arg_var ->
+            RPop (base_var arg_var, i * 4)
+          ) an
+        in
         let insts = pops @ [RCall f; RMv (base_var x, "a0")] in
         sp := !sp - n;
         aux (List.rev_append insts acc) xs

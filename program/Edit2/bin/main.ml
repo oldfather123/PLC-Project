@@ -133,7 +133,7 @@ let string_of_tac = function
   | TacGoto l -> "goto " ^ l
   | TacIfGoto (cond, l) -> Printf.sprintf "if %s goto %s" cond l
   | TacParam t -> "param " ^ t
-  | TacCall (t, f, n) -> Printf.sprintf "%s = call %s, %d" t f n
+  | TacCall (t, f, _, n) -> Printf.sprintf "%s = call %s, %d" t f n
   | TacReturn None -> "return"
   | TacReturn (Some t) -> "return " ^ t
   | TacComment s -> "# " ^ s

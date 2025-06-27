@@ -76,7 +76,7 @@ let const_fold_and_propagate tac_list =
           Some (TacUnOp (x, op, a'))
         )
     | TacParam a -> Some (TacParam (replace_var a))
-    | TacCall (x, f, n) -> Hashtbl.remove env x; Some (TacCall (x, f, n))
+    | TacCall (x, f, a, n) -> Hashtbl.remove env x; Some (TacCall (x, f, a, n))
     | TacReturn (Some a) -> Some (TacReturn (Some (replace_var a)))
     | TacIfGoto (a, l) -> Some (TacIfGoto (replace_var a, l))
     | TacLabel _ | TacGoto _ | TacReturn None | TacComment _ | TacPhi _ -> Some tac
@@ -102,7 +102,7 @@ let copy_propagate tac_list =
     | TacUnOp (x, op, a) ->
         TacUnOp (x, op, replace_var a)
     | TacParam a -> TacParam (replace_var a)
-    | TacCall (x, f, n) -> Hashtbl.remove env x; TacCall (x, f, n)
+    | TacCall (x, f, a, n) -> Hashtbl.remove env x; TacCall (x, f, a, n)
     | TacReturn (Some a) -> TacReturn (Some (replace_var a))
     | TacIfGoto (a, l) -> TacIfGoto (replace_var a, l)
     | _ -> tac
@@ -120,7 +120,7 @@ let dead_code_elimination tac_list =
         if not (is_int b) then Hashtbl.replace used b ()
     | TacUnOp (_, _, a) -> if not (is_int a) then Hashtbl.replace used a ()
     | TacParam a -> if not (is_int a) then Hashtbl.replace used a ()
-    | TacCall (x, _, _) -> Hashtbl.replace used x ()
+    | TacCall (x, _, _, _) -> Hashtbl.replace used x ()
     | TacReturn (Some a) -> if not (is_int a) then Hashtbl.replace used a ()
     | TacIfGoto (a, _) -> if not (is_int a) then Hashtbl.replace used a ()
     | TacGoto l -> Hashtbl.replace label_used l ()

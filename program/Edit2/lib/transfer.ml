@@ -8,7 +8,7 @@ type tac =
   | TacGoto of string
   | TacIfGoto of string * string
   | TacParam of string
-  | TacCall of string * string * int
+  | TacCall of string * string * identifier list * int
   | TacReturn of string option
   | TacComment of string
   | TacPhi of string * string * string
@@ -73,7 +73,7 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
       let arg_temps = List.map (fun a -> gen_expr a env code) args in
       List.iter (fun t -> code := !code @ [TacParam t]) (List.rev arg_temps);
       let t = new_temp () in
-      code := !code @ [TacCall (t, fname, List.length args)];
+      code := !code @ [TacCall (t, fname, arg_temps, List.length args)];
       t
 
 let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac list ref) : unit =
