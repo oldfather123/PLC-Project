@@ -66,19 +66,19 @@ let eval (prog : riscv_inst list) ?(state=State.create ()) () : State.t =
       | Some imm -> imm
       | None -> v r
     in
-    let sp_old = v "sp" in       (* 先取当前栈指针 *)
-    let sp_new = sp_old - 4 + ofs in  (* 栈指针减4，再加偏移 *)
-    sv "sp" (sp_old - 4);        (* 栈指针更新：-4，ofs一般用于访问偏移地址，不影响sp寄存器本身 *)
-    Hashtbl.replace st.mem sp_new value; (* 把值写入内存，地址是新栈顶加偏移 *)
+    let sp_old = v "sp" in       
+    let sp_new = sp_old - 4 + ofs in  
+    sv "sp" (sp_old - 4);        
+    Hashtbl.replace st.mem sp_new value; 
     next ()
 
 
     | RPop (d, ofs) ->
-    let sp_old = v "sp" in                (* 读取当前栈指针 *)
-    let addr = sp_old + ofs in            (* 计算内存地址 *)
+    let sp_old = v "sp" in                
+    let addr = sp_old + ofs in            
     let value = try Hashtbl.find st.mem addr with Not_found -> 0 in
-    sv d value;                          (* 把栈顶数据读入寄存器 d *)
-    sv "sp" (sp_old + 4);                (* 栈指针上移4字节 *)
+    sv d value;                         
+    sv "sp" (sp_old + 4);              
     next ()
 
 
