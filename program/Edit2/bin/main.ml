@@ -3,6 +3,7 @@ open Lib.Lexer
 open Lib.Parser
 open Lib.Transfer
 open Lib.Riscv_gen
+open Lib.Riscv_eval
 
 (* 打印AST的辅助函数 *)
 let print_type_specifier = function
@@ -99,6 +100,7 @@ let parse_file filename =
       (pos.pos_cnum - pos.pos_bol + 1);
     raise e
 
+
 let test_files = [ 
   "test/test1.c"; "test/test2.c"; "test/test3.c"; "test/test4.c"; "test/test5.c";
   "test/test6.c"; "test/test7.c"; "test/test8.c"; "test/test9.c"; "test/test10.c"; "test/test11.c"
@@ -184,11 +186,26 @@ let () =
           Printf.printf "==Original RISC-V Code==\n";
           let riscv_list = tac_to_riscv tac_list in
           print_riscv (riscv_list);
+
+          Printf.printf "=== Start RISC-V eval ===\n%!";
+          let st = Lib.Riscv_eval.eval riscv_list () in
+          Printf.printf "== RISC-V Execution Result ==\n";
+          Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
+
           Printf.printf "==Optimized TAC==\n";
           print_tac (Lib.Ssa_opt.optimize tac_list);
           Printf.printf "==Optimized RISC-V Code==\n";
           let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
           print_riscv (riscv_list);
+
+
+
+          Printf.printf "=== Start RISC-V eval ===\n%!";
+          let st = Lib.Riscv_eval.eval riscv_list () in
+          Printf.printf "== RISC-V Execution Result ==\n";
+          Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
 
         with
         | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
@@ -212,11 +229,25 @@ let () =
         Printf.printf "==Original RISC-V Code==\n";
         let riscv_list = tac_to_riscv tac_list in
         print_riscv (riscv_list);
+
+        Printf.printf "=== Start RISC-V eval ===\n%!";
+          let st = Lib.Riscv_eval.eval riscv_list () in
+          Printf.printf "== RISC-V Execution Result ==\n";
+          (*Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;*)
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
+        
         Printf.printf "==Optimized TAC==\n";
         print_tac (Lib.Ssa_opt.optimize tac_list);
         Printf.printf "==Optimized RISC-V Code==\n";
         let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
         print_riscv (riscv_list);
+
+
+        Printf.printf "=== Start RISC-V eval ===\n%!";
+          let st = Lib.Riscv_eval.eval riscv_list () in
+          Printf.printf "== RISC-V Execution Result ==\n";
+          (*Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;*)
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
 
       with
       | Sys_error msg -> Printf.eprintf "Error: %s\n" msg

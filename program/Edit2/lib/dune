@@ -1,6 +1,6 @@
 (library
  (name lib)
- (modules ast parser lexer env interpreter transfer ssa_opt riscv_gen))
+ (modules ast parser lexer env interpreter transfer ssa_opt riscv_gen riscv_eval))
 
  (ocamllex lexer)
  (ocamlyacc parser)
