@@ -157,12 +157,11 @@ let print_riscv_inst = function
   | RLabel l -> Printf.printf "%s:\n" l
   | RJ l -> Printf.printf "j %s\n" l
   | RBnez (rs, l) -> Printf.printf "bnez %s, %s\n" rs l
-  | RSw rs -> Printf.printf "sw %s, 0(sp)\n" rs
-  | RLw (rd, offset) -> Printf.printf "lw %s, %d(sp)\n" rd offset
-  | RAddi (rd, rs, imm) -> Printf.printf "addi %s, %s, %d\n" rd rs imm
+  | RPush (v, _) -> Printf.printf "addi sp, sp, -4\n"; Printf.printf "sw %s, 0(sp)\n" v
+  | RPop (v, _) -> Printf.printf "lw %s, 0(sp)\n" v ; Printf.printf "addi sp, sp, 4\n"
   | RCall f -> Printf.printf "call %s\n" f
-  | RMvFromA0 rd -> Printf.printf "mv %s, a0\n" rd
-  | RRet -> Printf.printf "ret\n"
+  | RRet (Some v) -> Printf.printf "mv a0, %s\nret\n" v
+  | RRet None -> Printf.printf "ret\n"
   | RComment s -> Printf.printf "# %s\n" s
 
 let print_riscv riscv_list =

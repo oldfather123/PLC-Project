@@ -17,12 +17,10 @@ type riscv_inst =
   | RLabel of string
   | RJ of string
   | RBnez of string * string
-  | RSw of string
-  | RLw of string * int
-  | RAddi of string * string * int
+  | RPush of string * int
+  | RPop of string * int
   | RCall of string
-  | RMvFromA0 of string
-  | RRet
+  | RRet of string option
   | RComment of string
 
 let base_var s =
@@ -30,6 +28,7 @@ let base_var s =
   with _ -> s
 
 let tac_to_riscv tac_list =
+  let sp = ref (-1) in
   let rec aux acc = function
     | [] -> List.rev acc
     | TacAssign (x, y) :: xs ->
@@ -63,17 +62,17 @@ let tac_to_riscv tac_list =
     | TacGoto l :: xs -> aux (RJ l :: acc) xs
     | TacIfGoto (a, l) :: xs -> aux (RBnez (base_var a, l) :: acc) xs
     | TacParam a :: xs ->
-        aux (RSw (base_var a) :: RAddi ("sp", "sp", -4) :: acc) xs
+        sp := !sp + 1;  
+        aux (RPush (base_var a, !sp * 4) :: acc) xs;
     | TacCall (x, f, n) :: xs ->
-        let rec lw_args i acc =
-          if i < 0 then acc
-          else lw_args (i-1) (RLw (Printf.sprintf "a%d" i, i*4) :: acc)
-        in
-        let insts = (lw_args (n-1) [])
-                  @ [RAddi ("sp", "sp", n*4); RCall f; RMvFromA0 (base_var x)] in
+        (* 约定参数总是a0,a1,...,an-1 *)
+        let pop_vars = List.init n (fun i -> ("a" ^ string_of_int i, i)) in
+        let pops = List.map (fun (v, ofs) -> RPop (v, ofs * 4)) pop_vars in
+        let insts = pops @ [RCall f; RMv (base_var x, "a0")] in
+        sp := !sp - n;
         aux (List.rev_append insts acc) xs
-    | TacReturn (Some a) :: xs -> aux (RRet :: RMv ("a0", base_var a) :: acc) xs
-    | TacReturn None :: xs -> aux (RRet :: acc) xs
+    | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: acc) xs
+    | TacReturn None :: xs -> aux (RRet None :: acc) xs
     | TacComment s :: xs -> aux (RComment s :: acc) xs
     | TacPhi (_, _, _) :: xs -> aux acc xs
   in
