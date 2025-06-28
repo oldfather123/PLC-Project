@@ -67,7 +67,7 @@ let tac_to_riscv tac_list =
         aux (RPush (base_var a, !sp * 4) :: acc) xs;
     | TacCall (x, f, _n) :: xs ->
         aux (RMv (base_var x, "a0") :: RCall f :: acc) xs
-    | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: acc) xs
+    | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: RMv ("a0", base_var a) :: acc) xs
     | TacReturn None :: xs -> aux (RRet None :: acc) xs
     | TacComment (t, s, a) :: xs -> 
       let identifier_name (id : identifier) : string = id in

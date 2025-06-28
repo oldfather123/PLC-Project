@@ -162,7 +162,8 @@ let print_riscv_inst = function
   | RPush (v, _) -> Printf.printf "addi sp, sp, -4\n"; Printf.printf "sw %s, 0(sp)\n" v
   | RPop (v, _) -> Printf.printf "lw %s, 0(sp)\n" v ; Printf.printf "addi sp, sp, 4\n"
   | RCall f -> Printf.printf "call %s\n" f
-  | RRet (Some v) -> Printf.printf "mv a0, %s\nret\n" v
+  (* | RRet (Some v) -> Printf.printf "mv a0, %s\nret\n" v *)
+  | RRet (Some _) -> Printf.printf "ret\n"
   | RRet None -> Printf.printf "ret\n"
   | RComment (_, s, _) -> Printf.printf "# %s\n" s
 
