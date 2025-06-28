@@ -20,7 +20,7 @@ type riscv_inst =
   | RBnez of string * string
   | RPush of string * int
   | RPop of string * int
-  | RCall of string
+  | RCall of string * string list
   | RRet of string option
   | RComment of string
 
@@ -73,7 +73,7 @@ let tac_to_riscv tac_list =
             RPop (base_var arg_var, i * 4)
           ) an
         in
-        let insts = pops @ [RCall f; RMv (base_var x, "a0")] in
+        let insts = pops @ [RCall (f, an); RMv (base_var x, "a0")] in
         sp := !sp - n;
         aux (List.rev_append insts acc) xs
     | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: acc) xs
