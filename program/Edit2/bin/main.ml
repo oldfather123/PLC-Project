@@ -133,10 +133,10 @@ let string_of_tac = function
   | TacGoto l -> "goto " ^ l
   | TacIfGoto (cond, l) -> Printf.sprintf "if %s goto %s" cond l
   | TacParam t -> "param " ^ t
-  | TacCall (t, f, _, n) -> Printf.sprintf "%s = call %s, %d" t f n
+  | TacCall (t, f, n) -> Printf.sprintf "%s = call %s, %d" t f n
   | TacReturn None -> "return"
   | TacReturn (Some t) -> "return " ^ t
-  | TacComment s -> "# " ^ s
+  | TacComment (_, s, _) -> "# " ^ s
   | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
 let print_tac tac_list =
@@ -164,7 +164,7 @@ let print_riscv_inst = function
   | RCall f -> Printf.printf "call %s\n" f
   | RRet (Some v) -> Printf.printf "mv a0, %s\nret\n" v
   | RRet None -> Printf.printf "ret\n"
-  | RComment s -> Printf.printf "# %s\n" s
+  | RComment (_, s, _) -> Printf.printf "# %s\n" s
 
 let print_riscv riscv_list =
   List.iter print_riscv_inst riscv_list

@@ -20,9 +20,9 @@ type riscv_inst =
   | RBnez of string * string
   | RPush of string * int
   | RPop of string * int
-  | RCall of string * string list
+  | RCall of string
   | RRet of string option
-  | RComment of string
+  | RComment of string * string * string list
 
 let base_var s =
   try String.sub s 0 (String.rindex s '_')
@@ -56,7 +56,7 @@ let tac_to_riscv tac_list =
         let inst = match op with
           | "!" -> RSeqz (rx, ra)
           | "-" -> RNeg (rx, ra)
-          | _ -> RComment ("unop " ^ op)
+          | _ -> RComment ("a0", ("unop " ^ op), [])
         in
         aux (inst :: acc) xs
     | TacLabel l :: xs -> aux (RLabel l :: acc) xs
@@ -65,20 +65,21 @@ let tac_to_riscv tac_list =
     | TacParam a :: xs ->
         sp := !sp + 1;  
         aux (RPush (base_var a, !sp * 4) :: acc) xs;
-    | TacCall (x, f, a, n) :: xs ->
-        let identifier_name (id : identifier) : string = id in
+    | TacCall (x, f, _n) :: xs ->
+        aux (RMv (base_var x, "a0") :: RCall f :: acc) xs
+    | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: acc) xs
+    | TacReturn None :: xs -> aux (RRet None :: acc) xs
+    | TacComment (t, s, a) :: xs -> 
+      let identifier_name (id : identifier) : string = id in
         let an = List.map identifier_name a in
         let pops =
           List.mapi (fun i arg_var ->
             RPop (base_var arg_var, i * 4)
           ) an
         in
-        let insts = pops @ [RCall (f, an); RMv (base_var x, "a0")] in
-        sp := !sp - n;
+        let insts = [RComment (t, s, an)] @ pops in
+        sp := !sp - List.length a;
         aux (List.rev_append insts acc) xs
-    | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: acc) xs
-    | TacReturn None :: xs -> aux (RRet None :: acc) xs
-    | TacComment s :: xs -> aux (RComment s :: acc) xs
     | TacPhi (_, _, _) :: xs -> aux acc xs
   in
   aux [] tac_list

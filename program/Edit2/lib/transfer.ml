@@ -8,22 +8,27 @@ type tac =
   | TacGoto of string
   | TacIfGoto of string * string
   | TacParam of string
-  | TacCall of string * string * identifier list * int
+  | TacCall of string * string * int
   | TacReturn of string option
-  | TacComment of string
+  | TacComment of string * string * identifier list
   | TacPhi of string * string * string
 
 let temp_counter = ref 0
-let label_counter = ref 0
+let if_label_counter = ref 0
+let while_label_counter = ref 0
 let break_stack = ref []
 let continue_stack = ref []
 let new_temp () =
   let t = Printf.sprintf "t%d" !temp_counter in
   incr temp_counter; t
 
-let new_label () =
-  let l = Printf.sprintf "L%d" !label_counter in
-  incr label_counter; l
+let if_new_label () =
+  let l = Printf.sprintf "if_L%d" !if_label_counter in
+  incr if_label_counter; l
+
+let while_new_label () =
+  let l = Printf.sprintf "while_L%d" !while_label_counter in
+  incr while_label_counter; l
 
 let string_of_binop = function
   | Add -> "+" | Sub -> "-" | Mul -> "*" | Div -> "/" | Mod -> "%"
@@ -73,7 +78,7 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
       let arg_temps = List.map (fun a -> gen_expr a env code) args in
       List.iter (fun t -> code := !code @ [TacParam t]) (List.rev arg_temps);
       let t = new_temp () in
-      code := !code @ [TacCall (t, fname, arg_temps, List.length args)];
+      code := !code @ [TacCall (t, fname, List.length args)];
       t
 
 let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac list ref) : unit =
@@ -95,8 +100,8 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
     code := !code @ [TacUnOp (cond_not_t, "!", cond_t)];
     (match else_s_opt with
       | Some else_s ->
-         let l_else = new_label () in
-         let l_end = new_label () in
+         let l_else = if_new_label () in
+         let l_end = if_new_label () in
          code := !code @ [TacIfGoto (cond_not_t, l_else)];
          let env_then = Hashtbl.copy env in
          let code_then = ref [] in
@@ -123,14 +128,14 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
             code := !code @ [TacPhi (phi_name, then_ssa, else_ssa)]
           ) vars  
       | None ->
-        let l_end = new_label () in
+        let l_end = if_new_label () in
         code := !code @ [TacIfGoto (cond_not_t, l_end)];
         gen_stmt then_s env code;
         code := !code @ [TacLabel l_end])
    | WhileStmt (cond, body) ->
-      let l_cond = new_label () in
-      let l_body = new_label () in
-      let l_end = new_label () in
+      let l_cond = while_new_label () in
+      let l_body = while_new_label () in
+      let l_end = while_new_label () in
       (* 检查循环体是否包含continue语句的标志 *)
       let has_continue = ref false in
       (* 检查循环体中是否有continue语句 *)
@@ -149,7 +154,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       check_continue body;
       break_stack := l_end :: !break_stack;
     if (!has_continue = true) then begin
-      let l_continue = new_label () in
+      let l_continue = while_new_label () in
       continue_stack := l_continue :: !continue_stack;
       code := !code @ [TacGoto l_cond];
       code := !code @ [TacLabel l_cond];
@@ -183,12 +188,12 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
    | BreakStmt ->
       (match !break_stack with
        | l_end :: _ -> code := !code @ [TacGoto l_end]
-       | [] -> code := !code @ [TacComment "break (not in loop)"])
+       | [] -> code := !code @ [TacComment ("a0", "break (not in loop)", [])])
 
   | ContinueStmt ->
       (match !continue_stack with
        | l_cond :: _ -> code := !code @ [TacGoto l_cond]
-       | [] -> code := !code @ [TacComment "continue (not in loop)"])
+       | [] -> code := !code @ [TacComment ("a0", "continue (not in loop)", [])])
 
   | ReturnStmt eo ->
       (match eo with
@@ -197,8 +202,10 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           let t = gen_expr e env code in
           code := !code @ [TacReturn (Some t)])
 
-let gen_func (FuncDef (_ret_ty, name, _params, body)) : tac list =
-  let code = ref [TacComment ("function " ^ name)] in
+let gen_func (FuncDef (_ret_ty, name, params, body)) : tac list =
+  let a = List.map (function Param id -> id) params in
+  let t = new_temp () in
+  let code = ref [TacComment (t, "function " ^ name, a)] in
   let env = ssa_version () in
   gen_stmt body env code;
   !code

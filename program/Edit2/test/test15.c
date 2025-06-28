@@ -1,5 +1,5 @@
 int main () {
-    int x = 2;
+    int x = 5;
     x = x - 1;
     if (x == 0) {
         x = x - 1;
