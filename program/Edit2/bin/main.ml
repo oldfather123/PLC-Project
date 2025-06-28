@@ -2,8 +2,9 @@ open Lib.Ast
 open Lib.Lexer
 open Lib.Parser
 open Lib.Transfer
-open Lib.Riscv_gen
-open Lib.Riscv_eval
+(* open Lib.Riscv_gen
+open Lib.Riscv_eval *)
+open Lib.Cfg_gen
 
 (* 打印AST的辅助函数 *)
 let print_type_specifier = function
@@ -142,7 +143,7 @@ let string_of_tac = function
 let print_tac tac_list =
   List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list
 
-let print_riscv_inst = function
+(* let print_riscv_inst = function
   | RAdd (rd, rs1, rs2) -> Printf.printf "add %s, %s, %s\n" rd rs1 rs2
   | RSub (rd, rs1, rs2) -> Printf.printf "sub %s, %s, %s\n" rd rs1 rs2
   | RMul (rd, rs1, rs2) -> Printf.printf "mul %s, %s, %s\n" rd rs1 rs2
@@ -168,7 +169,14 @@ let print_riscv_inst = function
   | RComment (_, s, _) -> Printf.printf "# %s\n" s
 
 let print_riscv riscv_list =
-  List.iter print_riscv_inst riscv_list
+  List.iter print_riscv_inst riscv_list *)
+
+let print_cfg cfg =
+  Hashtbl.iter (fun label block ->
+    Printf.printf "Block label: %s\n" label;
+    Printf.printf "  Successors: [%s]\n"
+      (String.concat "; " block.succs)
+  ) cfg
 
 let () =
   match Array.length Sys.argv with
@@ -184,29 +192,34 @@ let () =
           let tac_list = Lib.Transfer.gen_comp_unit ast in
           Printf.printf "==Original TAC==\n";
           print_tac tac_list;
-          Printf.printf "==Original RISC-V Code==\n";
-          let riscv_list = tac_to_riscv tac_list in
-          print_riscv (riscv_list);
 
-          Printf.printf "=== Start RISC-V eval ===\n%!";
+          let (cfg, _blk) = build_cfg tac_list in
+          Printf.printf "==Original CFG==\n";
+          print_cfg cfg;
+
+          (* Printf.printf "==Original RISC-V Code==\n";
+          let riscv_list = tac_to_riscv tac_list in
+          print_riscv (riscv_list); *)
+
+          (* Printf.printf "=== Start RISC-V eval ===\n%!";
           let st = Lib.Riscv_eval.eval riscv_list () in
           Printf.printf "== RISC-V Execution Result ==\n";
           Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;
-          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0"); *)
 
           Printf.printf "==Optimized TAC==\n";
           print_tac (Lib.Ssa_opt.optimize tac_list);
-          Printf.printf "==Optimized RISC-V Code==\n";
+          (* Printf.printf "==Optimized RISC-V Code==\n";
           let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
-          print_riscv (riscv_list);
+          print_riscv (riscv_list); *)
 
 
 
-          Printf.printf "=== Start RISC-V eval ===\n%!";
+          (* Printf.printf "=== Start RISC-V eval ===\n%!";
           let st = Lib.Riscv_eval.eval riscv_list () in
           Printf.printf "== RISC-V Execution Result ==\n";
           Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;
-          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0"); *)
 
         with
         | Sys_error msg -> Printf.eprintf "Error: %s\n" msg
@@ -227,28 +240,33 @@ let () =
         let tac_list = Lib.Transfer.gen_comp_unit ast in
         Printf.printf "==Original TAC==\n";
         print_tac tac_list;
-        Printf.printf "==Original RISC-V Code==\n";
-        let riscv_list = tac_to_riscv tac_list in
-        print_riscv (riscv_list);
 
-        Printf.printf "=== Start RISC-V eval ===\n%!";
+        let (cfg, _blk) = build_cfg tac_list in
+          Printf.printf "==Original CFG==\n";
+          print_cfg cfg;
+
+        (* Printf.printf "==Original RISC-V Code==\n";
+        let riscv_list = tac_to_riscv tac_list in
+        print_riscv (riscv_list); *)
+
+        (* Printf.printf "=== Start RISC-V eval ===\n%!";
           let st = Lib.Riscv_eval.eval riscv_list () in
           Printf.printf "== RISC-V Execution Result ==\n";
           (*Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;*)
-          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0"); *)
         
         Printf.printf "==Optimized TAC==\n";
         print_tac (Lib.Ssa_opt.optimize tac_list);
-        Printf.printf "==Optimized RISC-V Code==\n";
+        (* Printf.printf "==Optimized RISC-V Code==\n";
         let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
-        print_riscv (riscv_list);
+        print_riscv (riscv_list); *)
 
 
-        Printf.printf "=== Start RISC-V eval ===\n%!";
+        (* Printf.printf "=== Start RISC-V eval ===\n%!";
           let st = Lib.Riscv_eval.eval riscv_list () in
           Printf.printf "== RISC-V Execution Result ==\n";
           (*Hashtbl.iter (fun r v -> if v <> 0 then Printf.printf "%s = %d\n" r v) st.State.regs;*)
-          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0");
+          Printf.printf "Program returned (a0) = %d\n\n" (State.get_reg st "a0"); *)
 
       with
       | Sys_error msg -> Printf.eprintf "Error: %s\n" msg

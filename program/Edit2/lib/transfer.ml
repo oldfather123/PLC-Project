@@ -15,6 +15,7 @@ type tac =
 
 let temp_counter = ref 0
 let if_label_counter = ref 0
+let then_label_counter = ref 0
 let while_label_counter = ref 0
 let break_stack = ref []
 let continue_stack = ref []
@@ -25,6 +26,10 @@ let new_temp () =
 let if_new_label () =
   let l = Printf.sprintf "if_L%d" !if_label_counter in
   incr if_label_counter; l
+
+let then_new_label () =
+  let l = Printf.sprintf "then_L%d" !then_label_counter in
+  incr then_label_counter; l
 
 let while_new_label () =
   let l = Printf.sprintf "while_L%d" !while_label_counter in
@@ -103,6 +108,8 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
          let l_else = if_new_label () in
          let l_end = if_new_label () in
          code := !code @ [TacIfGoto (cond_not_t, l_else)];
+         let l_then = then_new_label () in
+          code := !code @ [TacLabel l_then];
          let env_then = Hashtbl.copy env in
          let code_then = ref [] in
          gen_stmt then_s env_then code_then;
@@ -206,6 +213,7 @@ let gen_func (FuncDef (_ret_ty, name, params, body)) : tac list =
   let a = List.map (function Param id -> id) params in
   let t = new_temp () in
   let code = ref [TacComment (t, "function " ^ name, a)] in
+  code := !code @ [TacLabel name];
   let env = ssa_version () in
   gen_stmt body env code;
   !code

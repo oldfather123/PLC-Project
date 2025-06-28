@@ -1,4 +1,5 @@
 open Transfer
+open Cfg_gen
 
 (* 辅助函数：判断字符串是否为整数 *)
 let is_int s =
@@ -78,8 +79,8 @@ let const_fold_and_propagate tac_list =
     | TacParam a -> Some (TacParam (replace_var a))
     | TacCall (x, f, n) -> Hashtbl.remove env x; Some (TacCall (x, f, n))
     | TacReturn (Some a) -> Some (TacReturn (Some (replace_var a)))
-    | TacIfGoto (a, l) -> Some (TacIfGoto (replace_var a, l))
-    | TacLabel _ | TacGoto _ | TacReturn None | TacComment _ | TacPhi _ -> Some tac
+    | TacIfGoto (a, l) when String.starts_with ~prefix:"if_L" l -> Some (TacIfGoto (replace_var a, l))
+    | TacLabel _ | TacGoto _ | TacReturn None | TacComment _ | TacPhi _ | TacIfGoto _-> Some tac
   ) tac_list
 
 (* 复制传播 *)
@@ -104,7 +105,7 @@ let copy_propagate tac_list =
     | TacParam a -> TacParam (replace_var a)
     | TacCall (x, f, n) -> Hashtbl.remove env x; TacCall (x, f, n)
     | TacReturn (Some a) -> TacReturn (Some (replace_var a))
-    | TacIfGoto (a, l) -> TacIfGoto (replace_var a, l)
+    | TacIfGoto (a, l) when String.starts_with ~prefix:"if_L" l -> TacIfGoto (replace_var a, l)
     | _ -> tac
   ) tac_list
 
@@ -137,14 +138,14 @@ let dead_code_elimination tac_list =
   ) tac_list
 
 (* if-else恒条件分支消除 *)
-type branch =
+(* type branch =
   | Both
   | OnlyThen
   | OnlyElse
 
 let optimize_if_else tac_list =
   let rec aux acc branch = function
-    | TacIfGoto (cond, l_else) :: rest when is_int cond ->
+    | TacIfGoto (cond, l_else) :: rest when is_int cond && String.starts_with ~prefix:"if_L" l_else ->
       if cond = "1" then
         (* 只走 else 分支 *)
         let rec drop_until_label = function
@@ -169,17 +170,53 @@ let optimize_if_else tac_list =
     | x :: xs -> aux (acc @ [x]) branch xs
     | [] -> acc
   in
-  aux [] Both tac_list
+  aux [] Both tac_list *)
+
+(* 基于CFG的不可达代码消除 *)
+let unreachable_code_elimination_by_cfg tac_list =
+  let (cfg, blk) = build_cfg tac_list in
+  (* 1. 找到入口 label（通常是第一个有 label 的 block） *)
+  let entry_label = "main"
+  in
+  (* 2. 可达性遍历 *)
+  let visited = Hashtbl.create 32 in
+  let rec visit l =
+    if not (Hashtbl.mem visited l) then (
+      Hashtbl.replace visited l ();
+      let block = Hashtbl.find cfg l in
+      List.iter visit block.succs
+    )
+  in
+  visit entry_label;
+  (* 3. 收集可达 block 的指令 *)
+  let reachable_blocks =
+    List.filter (fun block ->
+      match block.label with
+      | Some l -> Hashtbl.mem visited l
+      | None -> true  (* 没有 label 的一般是顺序块，也保留 *)
+    ) blk
+  in
+  (* 4. 拼接所有可达 block 的指令为新tac_list *)
+  List.flatten (List.map (fun block -> block.instrs) reachable_blocks)
 
 (* 综合优化流程 *)
-let rec fixpoint f x =
+(* let rec fixpoint f x =
   let x' = f x in
   if x' = x then x else fixpoint f x'
 let optimize tac_list =
   fixpoint (fun code ->
   code
   |> const_fold_and_propagate
-  |> optimize_if_else
+  (* |> optimize_if_else *)
+  |> unreachable_code_elimination_by_cfg
   |> copy_propagate
   |> dead_code_elimination
-  ) tac_list
+  ) tac_list *)
+
+let optimize tac_list =
+  tac_list
+  |> const_fold_and_propagate
+  (* |> optimize_if_else *)
+  |> copy_propagate
+  |> dead_code_elimination
+  |> unreachable_code_elimination_by_cfg
