@@ -1,3 +1,9 @@
+void vfunc (int x) {
+    while (x != 0) {
+        x = x - 2;
+    }
+    //return;
+}
 int func (int x) {
     x = x - 1;
     if (x == 0) {
@@ -6,6 +12,8 @@ int func (int x) {
     else {
         x = x - 2;
     }
+    vfunc(x);
+    return x;
 }
 int main () {
     int x = 5;

@@ -209,13 +209,19 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           let t = gen_expr e env code in
           code := !code @ [TacReturn (Some t)])
 
-let gen_func (FuncDef (_ret_ty, name, params, body)) : tac list =
+let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
   let a = List.map (function Param id -> id) params in
   let t = new_temp () in
   let code = ref [TacComment (t, "function " ^ name, a)] in
   code := !code @ [TacLabel name];
   let env = ssa_version () in
   gen_stmt body env code;
+  (match ret_ty, List.rev !code with
+   | Void, last::_ ->
+      (match last with
+       | TacReturn None -> ()
+       | _ -> code := !code @ [TacReturn None])
+   | _ -> ());
   !code
 
 let gen_comp_unit (cu : comp_unit) : tac list =
