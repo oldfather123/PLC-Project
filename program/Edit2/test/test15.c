@@ -12,11 +12,14 @@ int func (int x) {
     else {
         x = x - 2;
     }
-    vfunc(x);
+    //vfunc(x);
     return x;
 }
 int main () {
     int x = 5;
+    if (x == 5) {
+        x = 4;
+    }
     x = func(x);
     return x;
 }
