@@ -17,7 +17,7 @@ int func (int x) {
 }
 int main () {
     int x = 5;
-    if (x == 5) {
+    if (x != 5) {
         x = 4;
     }
     x = func(x);

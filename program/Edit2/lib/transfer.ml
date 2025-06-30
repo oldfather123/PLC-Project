@@ -19,6 +19,7 @@ let then_label_counter = ref 0
 let while_label_counter = ref 0
 let break_stack = ref []
 let continue_stack = ref []
+let current_func = ref ""
 let new_temp () =
   let t = Printf.sprintf "t%d" !temp_counter in
   incr temp_counter; t
@@ -48,7 +49,7 @@ module SSAMap = Hashtbl
 let ssa_version () = Hashtbl.create 32
 
 let ssa_var_name name ver =
-  Printf.sprintf "%s_%d" name ver
+  Printf.sprintf "%s_%d_%s" name ver !current_func
 
 let get_ssa_name env name =
   try
@@ -210,6 +211,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           code := !code @ [TacReturn (Some t)])
 
 let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
+  current_func := name;
   let a = List.map (function Param id -> id) params in
   let t = new_temp () in
   let code = ref [TacComment (t, "function " ^ name, a)] in

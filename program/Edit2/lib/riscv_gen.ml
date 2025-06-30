@@ -25,7 +25,9 @@ type riscv_inst =
   | RComment of string * string * string list
 
 let base_var s =
-  try String.sub s 0 (String.rindex s '_')
+  try 
+    let first = String.index s '_' in
+    String.sub s 0 first
   with _ -> s
 
 let tac_to_riscv tac_list =

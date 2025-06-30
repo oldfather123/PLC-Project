@@ -119,21 +119,27 @@ let copy_propagate_skip_loops loop_blocks blocks =
     | Some l when Hashtbl.mem loop_blocks l -> block
     | _ ->
       let instrs =
-        List.map (fun tac ->
+        List.filter_map (fun tac ->
           match tac with
           | TacAssign (x, y) when not (is_int y) ->
               let y' = replace_var y in
               Hashtbl.replace env x y';
-              TacAssign (x, y')
+              Some (TacAssign (x, y'))
           | TacBinOp (x, a, op, b) ->
-              TacBinOp (x, replace_var a, op, replace_var b)
+              Some (TacBinOp (x, replace_var a, op, replace_var b))
           | TacUnOp (x, op, a) ->
-              TacUnOp (x, op, replace_var a)
-          | TacParam a -> TacParam (replace_var a)
-          | TacCall (x, f, n) -> Hashtbl.remove env x; TacCall (x, f, n)
-          | TacReturn (Some a) -> TacReturn (Some (replace_var a))
-          | TacIfGoto (a, l) when String.starts_with ~prefix:"if_L" l -> TacIfGoto (replace_var a, l)
-          | _ -> tac
+              Some (TacUnOp (x, op, replace_var a))
+          | TacParam a -> Some (TacParam (replace_var a))
+          | TacCall (x, f, n) -> Hashtbl.remove env x; Some (TacCall (x, f, n))
+          | TacReturn (Some a) -> Some (TacReturn (Some (replace_var a)))
+          | TacIfGoto (a, l) ->
+              let a' = replace_var a in
+              if is_int a' then
+                if int_of_string a' = 0 then None
+                else Some (TacGoto l)
+              else
+                Some (TacIfGoto (a', l))
+                | _ -> Some (tac)
         ) block.instrs
       in { block with instrs }
   ) blocks
