@@ -1,4 +1,0 @@
-(executable
- (public_name Edit2)
- (name main)
- (libraries lib))
