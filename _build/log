@@ -1,8 +1,8 @@
-# dune exec Edit2
+# dune exec ./_build/default/bin/main.exe
 # OCAMLPARAM: unset
 # Shared cache: enabled-except-user-rules
 # Shared cache location: /home/oldfather/.cache/dune/db
-# Workspace root: /home/oldfather/ocaml/exam/PLC-Project/program/Edit2
+# Workspace root: /home/oldfather/ocaml/exam/PLC-Project
 # Auto-detected concurrency: 32
 # Dune context:
 #  { name = "default"
@@ -13,4 +13,4 @@
 #  ; build_dir = In_build_dir "default"
 #  ; instrument_with = []
 #  }
-$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_a87323_output
+$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_1a3c11_output
