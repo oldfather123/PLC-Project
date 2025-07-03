@@ -1,7 +1,0 @@
-(library
- (name lib)
- (modules ast parser lexer)
- )
-
-(ocamllex lexer)
-(ocamlyacc parser)

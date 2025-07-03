@@ -1,4 +1,2 @@
-(executables
- (names test)
- (modules test)
- (libraries lib))
+; (test
+;  (name test_Edit2))
