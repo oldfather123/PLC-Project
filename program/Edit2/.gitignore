@@ -1,0 +1,120 @@
+# OCaml
+*.cmo
+*.cmi
+*.cma
+*.cmx
+*.cmxa
+*.cmxs
+*.a
+*.o
+*.so
+*.dylib
+*.dll
+*.byte
+*.native
+*.annot
+*.cmt
+*.cmti
+*.spot
+*.spit
+
+# Dune build artifacts
+_build/
+*.install
+*.merlin
+
+# OCaml package manager
+*.opam.locked
+_opam/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.#*
+\#*#
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.orig
+
+# Generated parser and lexer files (uncomment if you want to ignore them)
+# lib/parser.ml
+# lib/parser.mli
+# lib/lexer.ml
+
+# Test outputs
+*.out
+*.output
+test_results/
+
+# Documentation
+_doc/
+*.html
+*.css
+*.js
+
+# Coverage
+bisect*.coverage
+_coverage/
+
+# Profiling
+gmon.out
+*.prof
+
+# Generated opam files (if you prefer to generate them)
+# *.opam
+
+# Local configuration
+.env
+config.local
+
+# Build scripts output
+*.sh.log
+
+# C compilation artifacts (if mixing C/OCaml)
+*.exe
+*.obj
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# Utop
+.utop_history
+
+# Merlin configuration (auto-generated)
+.merlin
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+.netrwhist
