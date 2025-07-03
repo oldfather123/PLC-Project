@@ -20,6 +20,8 @@
 
 # Dune build artifacts
 _build/
+_build/.digest-db
+_build/log
 *.install
 *.merlin
 
