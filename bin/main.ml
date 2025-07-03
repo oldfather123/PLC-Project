@@ -159,7 +159,7 @@ let print_riscv_inst = function
   | RSge (rd, rs1, rs2) -> Printf.printf "sge %s, %s, %s\n" rd rs1 rs2
   | RSeqz (rd, rs) -> Printf.printf "seqz %s, %s\n" rd rs
   | RNeg (rd, rs) -> Printf.printf "neg %s, %s\n" rd rs
-  | RMv (rd, rs) -> Printf.printf "mv %s, %s\n" rd rs
+  | RMv (rd, rs) -> Printf.printf "mov %s, %s\n" rd rs
   | RLi (rd, imm) -> Printf.printf "li %s, %d\n" rd imm
   | RLabel l -> Printf.printf "%s:\n" l
   | RJ l -> Printf.printf "j %s\n" l
