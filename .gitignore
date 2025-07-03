@@ -20,6 +20,7 @@
 
 # Dune build artifacts
 _build/
+_build/.db
 _build/.digest-db
 _build/log
 *.install
