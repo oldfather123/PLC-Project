@@ -60,6 +60,8 @@ let eval (prog : riscv_inst list) ?(state=State.create ()) () : State.t =
        | RJ l         -> goto (Hashtbl.find label_map l)
        | RBnez (r,l)  ->
            if v r <> 0 then goto (Hashtbl.find label_map l) else next ()
+       | RBne _ -> next()
+       | RBeq _ -> next()
        | RPush (r, ofs) ->
     let value =
       match int_of_string_opt r with

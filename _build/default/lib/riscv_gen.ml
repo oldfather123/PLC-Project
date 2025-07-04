@@ -23,6 +23,8 @@ type riscv_inst =
   | RCall of string
   | RRet of string option
   | RComment of string * string * string list
+  | RBeq of string * string * string  (* 添加相等比较跳转指令 *)
+  | RBne of string * string * string  (* 添加不等比较跳转指令 *)
 
 
 (* 寄存器分配相关数据结构 *)
@@ -111,6 +113,16 @@ let tac_to_riscv tac_list =
           aux (RLi (rx, int_of_string ry) :: acc) xs  (* 如果右值是数字，使用 li 指令 *)
         else
           aux (RMv (rx, ry) :: acc) xs
+    | TacBinOp (x1, i, "==", v1) :: 
+      TacUnOp (x3, "!", x2) :: 
+      TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3->
+        (* 优化模式：直接生成beq/bne指令 *)
+        aux (RBne (base_var i, base_var v1, label) :: acc) xs
+    | TacBinOp (x1, i, "!=", v1) :: 
+      TacUnOp (x3, "!", x2) :: 
+      TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3->
+        (* 优化模式：直接生成beq/bne指令 *)
+        aux (RBeq (base_var i, base_var v1, label) :: acc) xs
     | TacBinOp (x, a, op, b) :: xs ->
         let rx = base_var x and ra = base_var a and rb = base_var b in
         let inst = match op with
