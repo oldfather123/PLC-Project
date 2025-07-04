@@ -210,6 +210,10 @@ let () =
     Printf.printf "==Optimized TAC==\n";
     print_tac (Lib.Ssa_opt.optimize tac_list); *)
 
+    (* let riscv_list = tac_to_riscv Lib.Ssa_opt.optimize tac_list in
+    Printf.printf ".global main\n";
+    print_riscv (riscv_list); *)
+
   with
   | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
   | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
