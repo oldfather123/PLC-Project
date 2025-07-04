@@ -62,6 +62,17 @@ let inc_ssa_version env name =
   SSAMap.replace env name (v + 1);
   ssa_var_name name (v + 1)
 
+(* let ssa_var_name _name _ver =
+  Printf.sprintf "x%d" !temp_counter
+
+let get_ssa_name _env _name =
+  let t = new_temp () in
+  t
+
+let inc_ssa_version _env _name =
+  let t = new_temp () in
+  t *)
+
 let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac list ref) : string =
   match e with
   | Identifier id -> get_ssa_name env id
