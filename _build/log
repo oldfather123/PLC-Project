@@ -1,4 +1,4 @@
-# dune exec Edit2 test/test18.c
+# dune exec Edit2 test/test20.c
 # OCAMLPARAM: unset
 # Shared cache: enabled-except-user-rules
 # Shared cache location: /home/oldfather/.cache/dune/db
@@ -13,6 +13,4 @@
 #  ; build_dir = In_build_dir "default"
 #  ; instrument_with = []
 #  }
-$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_69301c_output
-$ (cd _build/default && /home/oldfather/.opam/ocaml-variants/bin/ocamlopt.opt -w @1..3@5..28@31..39@43@46..47@49..57@61..62@67@69-40 -strict-sequence -strict-formats -short-paths -keep-locs -g -I bin/.main.eobjs/byte -I bin/.main.eobjs/native -I lib/.lib.objs/byte -I lib/.lib.objs/native -intf-suffix .ml -no-alias-deps -opaque -o bin/.main.eobjs/native/dune__exe__Main.cmx -c -impl bin/main.ml)
-$ (cd _build/default && /home/oldfather/.opam/ocaml-variants/bin/ocamlopt.opt -w @1..3@5..28@31..39@43@46..47@49..57@61..62@67@69-40 -strict-sequence -strict-formats -short-paths -keep-locs -g -o bin/main.exe lib/lib.cmxa bin/.main.eobjs/native/dune__exe__Main.cmx)
+$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_c3f82a_output
