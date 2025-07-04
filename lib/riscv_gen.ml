@@ -134,7 +134,9 @@ let tac_to_riscv tac_list =
           | _ -> RComment ("a0", ("unop " ^ op), [])
         in
         aux (inst :: acc) xs
-    | TacLabel l :: xs -> aux (RLabel l :: acc) xs
+    | TacLabel l :: xs when String.starts_with ~prefix:"if_" l || 
+                           String.starts_with ~prefix:"then_" l || 
+                           String.starts_with ~prefix:"while_" l-> aux (RLabel l :: acc) xs
     | TacGoto l :: xs -> aux (RJ l :: acc) xs
     | TacIfGoto (a, l) :: xs -> aux (RBnez (base_var a, l) :: acc) xs
     | TacParam a :: xs ->
@@ -144,7 +146,7 @@ let tac_to_riscv tac_list =
         aux (RMv (base_var x, "a0") :: RCall f :: acc) xs
     | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: RMv ("a0", base_var a) :: acc) xs
     | TacReturn None :: xs -> aux (RRet None :: acc) xs
-    | TacComment (t, s, a) :: xs -> 
+    | TacComment (t, s, a) :: TacLabel l :: xs -> 
       let identifier_name (id : identifier) : string = id in
         let an = List.map identifier_name a in
         let pops =
@@ -152,10 +154,11 @@ let tac_to_riscv tac_list =
             RPop (base_var arg_var, i * 4)
           ) an
         in
-        let insts = [RComment (t, s, an)] @ pops in
+        let insts = [RComment (t, s, an); RLabel l] @ pops in
         sp := !sp - List.length a;
         aux (List.rev_append insts acc) xs
     | TacPhi (_, _, _) :: xs -> aux acc xs
+    | _ :: xs -> aux acc xs
   in
   (* aux [] tac_list *)
   let result = aux [] tac_list in
