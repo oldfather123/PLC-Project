@@ -193,6 +193,7 @@ let () =
 
     Printf.printf "==Original RISC-V Code==\n"; *)
     let riscv_list = tac_to_riscv tac_list in
+    Printf.printf ".global main\n";
     print_riscv (riscv_list);
 
     (* let (cfg, _blk) = build_cfg tac_list in
