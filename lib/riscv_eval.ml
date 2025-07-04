@@ -50,6 +50,8 @@ let eval (prog : riscv_inst list) ?(state=State.create ()) () : State.t =
        | RSgt (d,a,b) -> sv d (if v a >  v b then 1 else 0); next ()
        | RSge (d,a,b) -> sv d (if v a >= v b then 1 else 0); next ()
        | RSeqz (d,a)  -> sv d (if v a = 0 then 1 else 0); next ()
+       | RAnd (d,a,b) -> sv d (if v a <> 0 && v b <> 0 then 1 else 0); next ()
+       | ROr (d,a,b)  -> sv d (if v a <> 0 || v b <> 0 then 1 else 0); next ()
        | RNeg (d,a)   -> sv d (- v a); next ()
        | RMv (d, a) ->
           let value = match int_of_string_opt a with

@@ -11,6 +11,8 @@ type riscv_inst =
   | RSle of string * string * string
   | RSgt of string * string * string
   | RSge of string * string * string
+  | RAnd of string * string * string
+  | ROr of string * string * string
   | RSeqz of string * string
   | RNeg of string * string
   | RMv of string * string
@@ -137,6 +139,8 @@ let tac_to_riscv tac_list =
           | "<=" -> RSle (rx, ra, rb)
           | ">" -> RSgt (rx, ra, rb)
           | ">=" -> RSge (rx, ra, rb)
+          | "&&" -> RAnd (rx, ra, rb)
+          | "||" -> ROr (rx, ra, rb)
           | _ -> RAdd (rx, ra, rb)
         in
         aux (inst :: acc) xs
