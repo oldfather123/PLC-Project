@@ -57,6 +57,7 @@ let get_register var =
         reg
     | None -> 
         (* 如果没有可用寄存器，需要实现寄存器溢出 *)
+        Printf.printf "No available registers\n";
         failwith "No available registers"
 
 (* 释放寄存器 *)
