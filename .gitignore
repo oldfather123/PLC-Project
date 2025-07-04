@@ -19,13 +19,13 @@
 *.spit
 
 # Dune build artifacts
-_build/
-_build/.db
-_build/.digest-db
-_build/log
-**/_build/
-*.install
-*.merlin
+# _build/
+# _build/.db
+# _build/.digest-db
+# _build/log
+# **/_build/
+# *.install
+# *.merlin
 
 # OCaml package manager
 *.opam.locked
