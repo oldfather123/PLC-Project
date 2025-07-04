@@ -36,6 +36,7 @@ let allocate_register () =
   let rec find_free_reg i =
     if i >= 32 then None  (* 没有可用寄存器 *)
     else if i = 0 then find_free_reg 1  (* x0是零寄存器，跳过 *)
+    else if i = 1 then find_free_reg 2
     else if i = 2 then find_free_reg 3
     else if i = 10 then find_free_reg 11
     else if reg_pool.(i) = Free then Some i
