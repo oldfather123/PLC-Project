@@ -23,6 +23,7 @@ _build/
 _build/.db
 _build/.digest-db
 _build/log
+**/_build/
 *.install
 *.merlin
 
