@@ -20,6 +20,8 @@ let while_label_counter = ref 0
 let break_stack = ref []
 let continue_stack = ref []
 let current_func = ref ""
+let scope_stack = ref []
+
 let new_temp () =
   let t = Printf.sprintf "t%d" !temp_counter in
   incr temp_counter; t
@@ -62,6 +64,24 @@ let inc_ssa_version env name =
   SSAMap.replace env name (v + 1);
   ssa_var_name name (v + 1)
 
+(* 创建新作用域 *)
+let push_scope () =
+  scope_stack := (Hashtbl.create 32) :: !scope_stack
+
+(* 移除当前作用域 *)
+let pop_scope () =
+  match !scope_stack with
+  | _::rest -> scope_stack := rest
+  | [] -> failwith "No scope to pop"
+
+(* 在作用域栈中查找变量 *)
+let rec lookup_var name = function
+  | [] -> None
+  | scope::rest ->
+      match Hashtbl.find_opt scope name with
+      | Some v -> Some v
+      | None -> lookup_var name rest
+
 let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac list ref) : string =
   match e with
   | Identifier id -> get_ssa_name env id
@@ -89,16 +109,33 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
 
 let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac list ref) : unit =
   match s with
-  | Block stmts -> List.iter (fun st -> gen_stmt st env code) stmts
+  (* | Block stmts -> List.iter (fun st -> gen_stmt st env code) stmts *)
+  | Block stmts -> 
+      push_scope ();  (* 创建新作用域 *)
+      let old_env = Hashtbl.copy env in  (* 保存旧环境 *)
+      List.iter (fun st -> gen_stmt st env code) stmts;
+      (* 恢复旧环境并弹出作用域 *)
+      Hashtbl.clear env;
+      Hashtbl.iter (fun k v -> Hashtbl.add env k v) old_env;
+      pop_scope ()
   | EmptyStmt -> ()
   | ExprStmt e -> ignore (gen_expr e env code)
   | Assignment (id, e) ->
       let t = gen_expr e env code in
-      let ssa_id = inc_ssa_version env id in
+      (* let ssa_id = inc_ssa_version env id in *)
+      let ssa_id = 
+        match lookup_var id !scope_stack with
+        | Some v -> v
+        | None -> inc_ssa_version env id
+      in
       code := !code @ [TacAssign (ssa_id, t)]
   | VarDecl (id, e) ->
       let t = gen_expr e env code in
       let ssa_id = inc_ssa_version env id in
+      (* code := !code @ [TacAssign (ssa_id, t)] *)
+      (match !scope_stack with
+       | current::_ -> Hashtbl.add current id ssa_id
+       | [] -> failwith "No active scope");
       code := !code @ [TacAssign (ssa_id, t)]
    | IfStmt (cond, then_s, else_s_opt) ->
     let cond_t = gen_expr cond env code in

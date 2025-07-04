@@ -130,7 +130,7 @@ let parse_stdin () =
        | _ -> Printf.printf "Program returned a function\n")
   | exception _ -> Printf.eprintf "No 'main' function found\n" *)
 
-(* let string_of_tac = function
+let string_of_tac = function
   | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
   | TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
   | TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
@@ -145,7 +145,7 @@ let parse_stdin () =
   | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
 let print_tac tac_list =
-  List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list *)
+  List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list
 
 let print_riscv_inst = function
   | RAdd (rd, rs1, rs2) -> Printf.printf "add %s, %s, %s\n" rd rs1 rs2
@@ -195,10 +195,10 @@ let () =
     (* print_comp_unit ast; *)
     
     let tac_list = gen_comp_unit ast in
-    (* Printf.printf "==Original TAC==\n";
+    Printf.printf "==Original TAC==\n";
     print_tac tac_list;
 
-    Printf.printf "==Original RISC-V Code==\n"; *)
+    Printf.printf "==Original RISC-V Code==\n";
     let riscv_list = tac_to_riscv tac_list in
     Printf.printf ".global main\n";
     print_riscv (riscv_list);
