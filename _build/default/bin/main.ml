@@ -83,7 +83,7 @@ let print_func_def = function
     Printf.printf "%s\n\n" (print_func_def func_def)
   ) comp_unit *)
 
-(* let parse_file filename =
+let parse_file filename =
   let ic = open_in filename in
   let lexbuf = Lexing.from_channel ic in
   Lexing.set_filename lexbuf filename;
@@ -99,7 +99,7 @@ let print_func_def = function
       pos.pos_fname
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
-    raise e *)
+    raise e
 
 let parse_stdin () =
   let lexbuf = Lexing.from_channel stdin in
@@ -184,7 +184,12 @@ let print_riscv riscv_list =
 
 let () =
   try
-    let ast = parse_stdin () in
+    let ast = 
+      if Array.length Sys.argv > 1 then
+        parse_file Sys.argv.(1)  (* 从命令行参数获取文件名 *)
+      else
+        parse_stdin ()          (* 如果没有参数则从标准输入读取 *)
+    in
     (* print_comp_unit ast; *)
     
     let tac_list = gen_comp_unit ast in
