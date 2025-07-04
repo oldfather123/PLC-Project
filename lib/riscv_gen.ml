@@ -24,18 +24,91 @@ type riscv_inst =
   | RRet of string option
   | RComment of string * string * string list
 
-let base_var s =
+
+(* 寄存器分配相关数据结构 *)
+type reg_status = Free | Used
+let reg_pool = Array.make 32 Free  (* x0-x31的状态 *)
+let var_to_reg = Hashtbl.create 100 (* 变量到寄存器的映射 *)
+let reg_to_var = Hashtbl.create 32  (* 寄存器到变量的映射 *)
+
+(* 寄存器分配函数 *)
+let allocate_register () =
+  let rec find_free_reg i =
+    if i >= 32 then None  (* 没有可用寄存器 *)
+    else if i = 0 then find_free_reg 1  (* x0是零寄存器，跳过 *)
+    else if i = 2 then find_free_reg 3
+    else if i = 10 then find_free_reg 11
+    else if reg_pool.(i) = Free then Some i
+    else find_free_reg (i + 1)
+  in find_free_reg 1
+
+(* 为变量分配寄存器 *)
+let get_register var =
+  try 
+    Hashtbl.find var_to_reg var
+  with Not_found ->
+    match allocate_register () with
+    | Some reg_num ->
+        let reg = Printf.sprintf "x%d" reg_num in
+        reg_pool.(reg_num) <- Used;
+        Hashtbl.add var_to_reg var reg;
+        Hashtbl.add reg_to_var reg var;
+        reg
+    | None -> 
+        (* 如果没有可用寄存器，需要实现寄存器溢出 *)
+        failwith "No available registers"
+
+(* 释放寄存器 *)
+let free_register reg =
+  let reg_num = int_of_string (String.sub reg 1 (String.length reg - 1)) in
+  reg_pool.(reg_num) <- Free;
+  try
+    let var = Hashtbl.find reg_to_var reg in
+    Hashtbl.remove var_to_reg var;
+    Hashtbl.remove reg_to_var reg
+  with Not_found -> ()
+
+  (* let base_var s =
   try 
     let first = String.index s '_' in
     String.sub s 0 first
-  with _ -> s
+  with _ -> s *)
+
+let is_number s =
+  try
+    let _ = int_of_string s in
+    true
+  with Failure _ -> false
+
+let base_var s =
+  if is_number s then
+    s  (* 如果是数字，直接返回数字字符串 *)
+  else
+    try 
+      let first = String.index s '_' in
+      let var_name = String.sub s 0 first in
+      get_register var_name
+    with _ -> get_register s
+
+let cleanup_registers () =
+  Hashtbl.iter (fun _ reg -> free_register reg) var_to_reg;
+  for i = 1 to 31 do
+    reg_pool.(i) <- Free
+  done;
+  Hashtbl.clear var_to_reg;
+  Hashtbl.clear reg_to_var
 
 let tac_to_riscv tac_list =
   let sp = ref (-1) in
   let rec aux acc = function
     | [] -> List.rev acc
     | TacAssign (x, y) :: xs ->
-        aux (RMv (base_var x, base_var y) :: acc) xs
+        let rx = base_var x in
+        let ry = base_var y in
+        if is_number ry then
+          aux (RLi (rx, int_of_string ry) :: acc) xs  (* 如果右值是数字，使用 li 指令 *)
+        else
+          aux (RMv (rx, ry) :: acc) xs
     | TacBinOp (x, a, op, b) :: xs ->
         let rx = base_var x and ra = base_var a and rb = base_var b in
         let inst = match op with
@@ -84,4 +157,7 @@ let tac_to_riscv tac_list =
         aux (List.rev_append insts acc) xs
     | TacPhi (_, _, _) :: xs -> aux acc xs
   in
-  aux [] tac_list
+  (* aux [] tac_list *)
+  let result = aux [] tac_list in
+  cleanup_registers ();
+  result
