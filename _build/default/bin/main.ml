@@ -179,6 +179,7 @@ let print_riscv_inst = function
   | RBle (r1, r2, label) -> Printf.printf "ble %s, %s, %s\n" r1 r2 label
   | RBgt (r1, r2, label) -> Printf.printf "bgt %s, %s, %s\n" r1 r2 label
   | RBge (r1, r2, label) -> Printf.printf "bge %s, %s, %s\n" r1 r2 label
+  | RXori (rd, rs, imm) -> Printf.printf "xori %s, %s, %d\n" rd rs imm
 
 let print_riscv riscv_list =
   List.iter print_riscv_inst riscv_list

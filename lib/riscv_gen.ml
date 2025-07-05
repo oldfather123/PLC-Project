@@ -31,6 +31,7 @@ type riscv_inst =
   | RBle of string * string * string
   | RBgt of string * string * string
   | RBge of string * string * string
+  | RXori of string * string * int
 
 let sp = ref (-1)
 
@@ -98,23 +99,6 @@ let allocate_register () =
     else find_free_reg (i + 1)
   in find_free_reg 1
 
-(* 为变量分配寄存器 *)
-(* let get_register var =
-  try 
-    Hashtbl.find var_to_reg var
-  with Not_found ->
-    match allocate_register () with
-    | Some reg_num ->
-        let reg = Printf.sprintf "x%d" reg_num in
-        reg_pool.(reg_num) <- Used;
-        Hashtbl.add var_to_reg var reg;
-        Hashtbl.add reg_to_var reg var;
-        reg
-    | None -> 
-        (* 如果没有可用寄存器，需要实现寄存器溢出 *)
-        Printf.printf "No available registers\n";
-        failwith "No available registers" *)
-
 (* 释放寄存器 *)
 let free_register reg =
   let reg_num = int_of_string (String.sub reg 1 (String.length reg - 1)) in
@@ -128,6 +112,7 @@ let free_register reg =
 let popsig = ref (false, "")
 let pushsig = ref (false, "")
 
+(* 为变量分配寄存器 *)
 let get_register var =
   try 
     (* 先检查变量是否在寄存器中 *)
@@ -316,22 +301,22 @@ let tac_to_riscv tac_list =
         else
           getvar := !getvar @ [];
         let inst = match op with
-          | "+" -> RAdd (rx, ra, rb)
-          | "-" -> RSub (rx, ra, rb)
-          | "*" -> RMul (rx, ra, rb)
-          | "/" -> RDiv (rx, ra, rb)
-          | "%" -> RRem (rx, ra, rb)
-          | "==" -> RSub (rx, ra, rb)
-          | "!=" -> RSub (rx, ra, rb)
-          | "<" -> RSlt (rx, ra, rb)
-          | "<=" -> RSle (rx, ra, rb)
-          | ">" -> RSgt (rx, ra, rb)
-          | ">=" -> RSge (rx, ra, rb)
-          | "&&" -> RAnd (rx, ra, rb)
-          | "||" -> ROr (rx, ra, rb)
-          | _ -> RAdd (rx, ra, rb)
+          | "+" -> [RAdd (rx, ra, rb)]
+          | "-" -> [RSub (rx, ra, rb)]
+          | "*" -> [RMul (rx, ra, rb)]
+          | "/" -> [RDiv (rx, ra, rb)]
+          | "%" -> [RRem (rx, ra, rb)]
+          | "==" -> [RSub (rx, ra, rb)]
+          | "!=" -> [RSub (rx, ra, rb)]
+          | "<" -> [RSlt (rx, ra, rb)]
+          | "<=" -> [RSlt (rx, ra, rb); RXori (rx, rx, 1)] 
+          | ">" -> [RSgt (rx, ra, rb)]
+          | ">=" -> [RSgt (rx, ra, rb); RXori (rx, rx, 1)]
+          | "&&" -> [RAnd (rx, ra, rb)]
+          | "||" -> [ROr (rx, ra, rb)]
+          | _ -> [RAdd (rx, ra, rb)]
         in
-        aux (!getvar @ [inst] @ acc) xs
+        aux (!getvar @ inst @ acc) xs
     | TacUnOp (x, op, a) :: xs ->
       let getvar = ref [] in  
       let rx = base_var x and ra = base_var a in
