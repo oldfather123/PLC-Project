@@ -201,7 +201,11 @@ let () =
     print_tac tac_list;
 
     Printf.printf "==Original RISC-V Code==\n"; *)
-    let riscv_list = tac_to_riscv tac_list in
+    let riscv_list = 
+      match tac_to_riscv tac_list with
+      | [] -> [RLabel "main"; RMv ("a0", "0"); RRet None]
+      | _ as riscv_list -> riscv_list
+    in
     Printf.printf ".global main\n";
     print_riscv (riscv_list);
 
