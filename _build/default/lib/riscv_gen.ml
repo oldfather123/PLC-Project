@@ -428,7 +428,7 @@ let tac_to_riscv tac_list =
             RPop (ra, i * 4)
           ) an
         in
-        let insts = [RComment (t, s, an); RLabel l; RPush ("ra", !current_stack_offset)] @ !getvar @ pops in
+        let insts = [RComment (t, s, an); RLabel l] @ !getvar @ pops @ [RPush ("ra", !current_stack_offset)] in
         sp := !sp - List.length a;
         aux (List.rev_append insts acc) xs
     | TacPhi (_, _, _) :: xs -> aux acc xs
