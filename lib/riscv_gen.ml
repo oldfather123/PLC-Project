@@ -406,7 +406,7 @@ let tac_to_riscv tac_list =
           getvar := !getvar @ [RPush (ra, !current_stack_offset)])
         else
           getvar := !getvar @ [];
-      aux (RRet (Some (ra)) :: RMv ("a0", ra) :: acc) xs
+      aux (!getvar @ [RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
     | TacReturn None :: xs -> aux (RRet None :: acc) xs
     | TacComment (t, s, a) :: TacLabel l :: xs -> 
       let identifier_name (id : identifier) : string = id in
@@ -428,7 +428,7 @@ let tac_to_riscv tac_list =
             RPop (ra, i * 4)
           ) an
         in
-        let insts = [RComment (t, s, an); RLabel l] @ !getvar @ pops in
+        let insts = [RComment (t, s, an); RLabel l; RPush ("ra", !current_stack_offset)] @ !getvar @ pops in
         sp := !sp - List.length a;
         aux (List.rev_append insts acc) xs
     | TacPhi (_, _, _) :: xs -> aux acc xs

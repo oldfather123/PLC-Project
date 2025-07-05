@@ -1,4 +1,4 @@
-int main() {
+int func() {
     int x1 = 1;
     int x2 = 1;
     int x3 = 1;
@@ -38,4 +38,8 @@ int main() {
            x11+x12+x13+x14+x15+x16+x17+x18+x19+x20+
            x21+x22+x23+x24+x25+x26+x27+x28+x29+x30+
            x31+x32+x33+x34+x35;  // 预期结果：35
+}
+int main() {
+    int result = func();
+    return result;
 }
