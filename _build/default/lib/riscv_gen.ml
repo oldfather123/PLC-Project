@@ -27,6 +27,10 @@ type riscv_inst =
   | RComment of string * string * string list
   | RBeq of string * string * string  (* 添加相等比较跳转指令 *)
   | RBne of string * string * string  (* 添加不等比较跳转指令 *)
+  | RBlt of string * string * string
+  | RBle of string * string * string
+  | RBgt of string * string * string
+  | RBge of string * string * string
 
 let sp = ref (-1)
 
@@ -208,87 +212,6 @@ let cleanup_registers () =
   Hashtbl.clear var_to_reg;
   Hashtbl.clear reg_to_var
 
-(* let tac_to_riscv tac_list =
-  current_stack_offset := 0;  (* 初始化栈偏移量 *)
-  Hashtbl.clear stack_vars;   (* 清空栈变量表 *)
-  Array.fill reg_use_count 0 32 0;
-  let rec aux acc = function
-    | [] -> List.rev acc
-    | TacAssign (x, y) :: xs ->
-        let rx = base_var x in
-        let ry = base_var y in
-        if is_number ry then
-          aux (RLi (rx, int_of_string ry) :: acc) xs  (* 如果右值是数字，使用 li 指令 *)
-        else
-          aux (RMv (rx, ry) :: acc) xs
-    | TacBinOp (x1, i, "==", v1) :: 
-      TacUnOp (x3, "!", x2) :: 
-      TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3->
-        (* 优化模式：直接生成beq/bne指令 *)
-        aux (RBne (base_var i, base_var v1, label) :: acc) xs
-    | TacBinOp (x1, i, "!=", v1) :: 
-      TacUnOp (x3, "!", x2) :: 
-      TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3->
-        (* 优化模式：直接生成beq/bne指令 *)
-        aux (RBeq (base_var i, base_var v1, label) :: acc) xs
-    | TacBinOp (x, a, op, b) :: xs ->
-        let rx = base_var x and ra = base_var a and rb = base_var b in
-        let inst = match op with
-          | "+" -> RAdd (rx, ra, rb)
-          | "-" -> RSub (rx, ra, rb)
-          | "*" -> RMul (rx, ra, rb)
-          | "/" -> RDiv (rx, ra, rb)
-          | "%" -> RRem (rx, ra, rb)
-          | "==" -> RSub (rx, ra, rb)
-          | "!=" -> RSub (rx, ra, rb)
-          | "<" -> RSlt (rx, ra, rb)
-          | "<=" -> RSle (rx, ra, rb)
-          | ">" -> RSgt (rx, ra, rb)
-          | ">=" -> RSge (rx, ra, rb)
-          | "&&" -> RAnd (rx, ra, rb)
-          | "||" -> ROr (rx, ra, rb)
-          | _ -> RAdd (rx, ra, rb)
-        in
-        aux (inst :: acc) xs
-    | TacUnOp (x, op, a) :: xs ->
-        let rx = base_var x and ra = base_var a in
-        let inst = match op with
-          | "!" -> RSeqz (rx, ra)
-          | "-" -> RNeg (rx, ra)
-          | _ -> RComment ("a0", ("unop " ^ op), [])
-        in
-        aux (inst :: acc) xs
-    | TacLabel l :: xs when String.starts_with ~prefix:"if_" l || 
-                           String.starts_with ~prefix:"then_" l || 
-                           String.starts_with ~prefix:"while_" l-> aux (RLabel l :: acc) xs
-    | TacGoto l :: xs -> aux (RJ l :: acc) xs
-    | TacIfGoto (a, l) :: xs -> aux (RBnez (base_var a, l) :: acc) xs
-    | TacParam a :: xs ->
-        sp := !sp + 1;  
-        aux (RPush (base_var a, !sp * 4) :: acc) xs;
-    | TacCall (x, f, _n) :: xs ->
-        aux (RMv (base_var x, "a0") :: RCall f :: acc) xs
-    | TacReturn (Some a) :: xs -> aux (RRet (Some (base_var a)) :: RMv ("a0", base_var a) :: acc) xs
-    | TacReturn None :: xs -> aux (RRet None :: acc) xs
-    | TacComment (t, s, a) :: TacLabel l :: xs -> 
-      let identifier_name (id : identifier) : string = id in
-        let an = List.map identifier_name a in
-        let pops =
-          List.mapi (fun i arg_var ->
-            RPop (base_var arg_var, i * 4)
-          ) an
-        in
-        let insts = [RComment (t, s, an); RLabel l] @ pops in
-        sp := !sp - List.length a;
-        aux (List.rev_append insts acc) xs
-    | TacPhi (_, _, _) :: xs -> aux acc xs
-    | _ :: xs -> aux acc xs
-  in
-  (* aux [] tac_list *)
-  let result = aux [] tac_list in
-  cleanup_registers ();
-  result *)
-
 let tac_to_riscv tac_list =
   current_stack_offset := 0;  (* 初始化栈偏移量 *)
   Hashtbl.clear stack_vars;   (* 清空栈变量表 *)
@@ -323,7 +246,7 @@ let tac_to_riscv tac_list =
           aux (!getvar @ [RLi (rx, int_of_string ry)] @ acc) xs  (* 如果右值是数字，使用 li 指令 *)
         else
           aux (!getvar @ [RMv (rx, ry)] @ acc) xs
-    | TacBinOp (x1, x, "==", a) :: 
+    | TacBinOp (x1, x, op, a) :: 
       TacUnOp (x3, "!", x2) :: 
       TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3->
         (* 优化模式：直接生成beq/bne指令 *)
@@ -349,34 +272,16 @@ let tac_to_riscv tac_list =
           getvar := [RPush (ra, !current_stack_offset)])
         else
           getvar := !getvar @ [];
-        aux (!getvar @ [RBne (rx, ra, label)] @ acc) xs
-    | TacBinOp (x1, x, "!=", a) :: 
-      TacUnOp (x3, "!", x2) :: 
-      TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3->
-        (* 优化模式：直接生成beq/bne指令 *)
-        let getvar = ref [] in  
-      let rx = base_var x and ra = base_var a in
-       if !popsig = (true, rx) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, rx) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        aux (!getvar @ [RBeq (rx, ra, label)] @ acc) xs
+        let instr = match op with
+          | "==" -> RBne (rx, ra, label)  (* 生成beq指令 *)
+          | "!=" -> RBeq (rx, ra, label)  (* 生成bne指令 *)
+          | "<" -> RBge (rx, ra, label)
+          | "<=" -> RBgt (rx, ra, label)
+          | ">" -> RBle (rx, ra, label)
+          | ">=" -> RBlt (rx, ra, label)
+          | _ -> failwith "Unsupported operation in if-goto"
+        in
+        aux (!getvar @ [instr] @ acc) xs
     | TacBinOp (x, a, op, b) :: xs ->
         let getvar = ref [] in
         let rx = base_var x and ra = base_var a and rb = base_var b in
