@@ -248,7 +248,7 @@ let tac_to_riscv tac_list =
           aux (!getvar @ [RMv (rx, ry)] @ acc) xs
     | TacBinOp (x1, x, op, a) :: 
       TacUnOp (x3, "!", x2) :: 
-      TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3->
+      TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3 && op <> "&&" && op <> "||"->
         (* 优化模式：直接生成beq/bne指令 *)
         let getvar = ref [] in  
       let rx = base_var x and ra = base_var a in
