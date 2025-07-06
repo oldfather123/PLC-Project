@@ -44,13 +44,19 @@ type reg_spill_status = {
     needs_pop: bool;
     needs_push: bool;
 }
-
+type reg_status = Free | Used
+type function_state = {
+  var_to_reg: (string, string) Hashtbl.t;
+  reg_to_var: (string, string) Hashtbl.t;
+  reg_pool: reg_status array;
+  reg_use_count: int array;
+}
 
 let stack_vars = Hashtbl.create 100  (* 变量到栈位置的映射 *)
 let current_stack_offset = ref 0  
 
 (* 寄存器分配相关数据结构 *)
-type reg_status = Free | Used
+
 let reg_pool = Array.make 32 Free  (* x0-x31的状态 *)
 let var_to_reg = Hashtbl.create 100 (* 变量到寄存器的映射 *)
 let reg_to_var = Hashtbl.create 32  (* 寄存器到变量的映射 *)
@@ -192,30 +198,6 @@ let get_register var =
           Hashtbl.add var_to_reg var victim_reg;
           Hashtbl.add reg_to_var victim_reg var;
           victim_reg
-
-  (* let base_var s =
-  try 
-    let first = String.index s '_' in
-    String.sub s 0 first
-  with _ -> s *)
-
-let is_number s =
-  try
-    let _ = int_of_string s in
-    true
-  with Failure _ -> false
-
-let base_var s =
-  if is_number s then
-    s  (* 如果是数字，直接返回数字字符串 *)
-  else
-    try 
-      let first = String.index s '_' in
-      let second = String.index_from s (first + 1) '_' in
-      let var_name = String.sub s 0 second in
-      get_register var_name
-    with _ -> get_register s
-
 let cleanup_registers () =
   Hashtbl.clear reg_spill_status;  (* 清除溢出状态表 *)
   Hashtbl.iter (fun _ reg -> free_register reg) var_to_reg;
@@ -226,6 +208,67 @@ let cleanup_registers () =
   Hashtbl.clear var_to_reg;
   Hashtbl.clear reg_to_var;
   Hashtbl.clear stack_vars
+
+let current_function = ref ""  (* 跟踪当前正在处理的函数 *)
+
+(* 函数作用域状态管理 *)
+let function_states = Hashtbl.create 10  (* 存储每个函数的寄存器状态 *)
+
+
+(* 保存当前函数状态 *)
+let save_function_state () =
+  let state = {
+    var_to_reg = Hashtbl.copy var_to_reg;
+    reg_to_var = Hashtbl.copy reg_to_var;
+    reg_pool = Array.copy reg_pool;
+    reg_use_count = Array.copy reg_use_count;
+  } in
+  Hashtbl.replace function_states !current_function state
+
+(* 恢复函数状态 *)
+let restore_function_state fname =
+  try
+    let state = Hashtbl.find function_states fname in
+    Hashtbl.clear var_to_reg;
+    Hashtbl.clear reg_to_var;
+    Hashtbl.iter (Hashtbl.add var_to_reg) state.var_to_reg;
+    Hashtbl.iter (Hashtbl.add reg_to_var) state.reg_to_var;
+    Array.blit state.reg_pool 0 reg_pool 0 32;
+    Array.blit state.reg_use_count 0 reg_use_count 0 32
+  with Not_found -> 
+    cleanup_registers ()  (* 如果是新函数，清理所有状态 *)
+
+let is_number s =
+  try
+    let _ = int_of_string s in
+    true
+  with Failure _ -> false
+
+(* let base_var s =
+  if is_number s then
+    s  (* 如果是数字，直接返回数字字符串 *)
+  else
+    try 
+      let first = String.index s '_' in
+      let second = String.index_from s (first + 1) '_' in
+      let var_name = String.sub s 0 second in
+      get_register var_name
+    with _ -> get_register s *)
+let base_var s =
+  if is_number s then s
+  else
+    try 
+      let first = String.index s '_' in
+      (* let second = String.index_from s (first + 1) '_' in *)
+      let third = String.rindex s '_' in
+      let var_name = String.sub s 0 first in
+      let func_name = String.sub s (third + 1) (String.length s - third - 1) in
+      if func_name = !current_function then
+        get_register var_name
+      else
+        failwith (Printf.sprintf "Variable %s from function %s used in %s" 
+          var_name func_name !current_function)
+    with _ -> get_register s
 
 let tac_to_riscv tac_list =
   current_stack_offset := 0;  (* 初始化栈偏移量 *)
@@ -304,13 +347,18 @@ let tac_to_riscv tac_list =
       let rx = base_var x in
        let getvar = handle_register_spill rx  in
           (* Printf.printf "Calling function %s with return variable %s\n" f rx; *)
-      aux (getvar @ [RMv (rx, "a0")] @ [RCall f] @ acc) xs
+      save_function_state ();     (* 保存调用者状态 *)
+          aux (getvar @ [RMv (rx, "a0")] @ [RCall f] @ acc) xs
     | TacReturn (Some a) :: xs -> 
         let ra = base_var a in
         let getvar =  handle_register_spill ra  in
+        save_function_state ();     (* 保存函数状态 *)
       aux (getvar @ [RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
     | TacReturn None :: xs -> aux (RRet None :: acc) xs
     | TacComment (t, s, a) :: TacLabel l :: xs -> 
+      save_function_state ();     (* 保存当前函数状态 *)
+      current_function := l;      (* 更新当前函数名 *)
+      restore_function_state l;   (* 初始化新函数的状态 *)
       let identifier_name (id : identifier) : string = id in
         let getvar = ref [] in 
       let an = List.map identifier_name a in
