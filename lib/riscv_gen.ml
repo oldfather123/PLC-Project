@@ -126,7 +126,7 @@ let handle_register_spill reg =
         if status.needs_pop then
             spill_ops := !spill_ops @ [RPop (reg, 0)];
         if status.needs_push then
-          Printf.printf "Spilling %s to stack\n" reg;
+          (* Printf.printf "Spilling %s to stack\n" reg; *)
             spill_ops := !spill_ops @ [RPush (reg, 0)];
         Hashtbl.remove reg_spill_status reg;
         !spill_ops
@@ -298,12 +298,12 @@ let tac_to_riscv tac_list =
         sp := !sp + 1;  
         let ra = base_var a in
         let getvar = handle_register_spill ra  in
-          Printf.printf "Pushing parameter %s\n" ra ;
+          (* Printf.printf "Pushing parameter %s\n" ra ; *)
         aux (getvar @ [RPush (ra, !sp * 4)] @ acc) xs;
     | TacCall (x, f, _n) :: xs ->
       let rx = base_var x in
        let getvar = handle_register_spill rx  in
-          Printf.printf "Calling function %s with return variable %s\n" f rx;
+          (* Printf.printf "Calling function %s with return variable %s\n" f rx; *)
       aux (getvar @ [RMv (rx, "a0")] @ [RCall f] @ acc) xs
     | TacReturn (Some a) :: xs -> 
         let ra = base_var a in
