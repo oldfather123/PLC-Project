@@ -224,11 +224,11 @@ let save_function_state () =
     reg_use_count = Array.copy reg_use_count;
   } in
   Hashtbl.replace function_states !current_function state
-
 (* 恢复函数状态 *)
 let restore_function_state fname =
   try
     let state = Hashtbl.find function_states fname in
+    cleanup_registers (); 
     Hashtbl.clear var_to_reg;
     Hashtbl.clear reg_to_var;
     Hashtbl.iter (Hashtbl.add var_to_reg) state.var_to_reg;
@@ -259,9 +259,9 @@ let base_var s =
   else
     try 
       let first = String.index s '_' in
-      (* let second = String.index_from s (first + 1) '_' in *)
+      let second = String.index_from s (first + 1) '_' in
       let third = String.rindex s '_' in
-      let var_name = String.sub s 0 first in
+      let var_name = String.sub s 0 second in
       let func_name = String.sub s (third + 1) (String.length s - third - 1) in
       if func_name = !current_function then
         get_register var_name
@@ -269,6 +269,29 @@ let base_var s =
         failwith (Printf.sprintf "Variable %s from function %s used in %s" 
           var_name func_name !current_function)
     with _ -> get_register s
+(* let base_var s =
+  if is_number s then s
+  else
+    try 
+      let first = String.index s '_' in        (* 找到第一个'_'，如 x_Control_1_main 中的第一个'_' *)
+      let second = String.index_from s (first + 1) '_' in  (* 找到第二个'_'，即 Control 后的'_' *)
+      let third = String.rindex s '_' in       (* 找到最后一个'_'，即 main 前的'_' *)
+      
+      (* 提取变量名和类型 *)
+      let var_name = String.sub s 0 first in   (* 获取变量名：x *)
+      let var_type = String.sub s (first + 1) (second - first - 1) in (* 获取类型：Control *)
+      let func_name = String.sub s (third + 1) (String.length s - third  - 1) in (* 获取函数名：main *)
+      Printf.printf "var_type %s func_name %s\n" var_type func_name;
+      (* 组合变量名和类型作为寄存器分配的键 *)
+      let register_key = Printf.sprintf "%s_%s" var_name var_type in
+      Printf.printf "register_key %s\n" register_key;
+      (* 检查当前函数是否与变量的函数名匹配 *)
+      if func_name = !current_function then
+        get_register register_key
+      else
+        failwith (Printf.sprintf "Variable %s(%s) from function %s used in %s" 
+          var_name var_type func_name !current_function)
+    with _ -> get_register s *)
 
 let tac_to_riscv tac_list =
   current_stack_offset := 0;  (* 初始化栈偏移量 *)

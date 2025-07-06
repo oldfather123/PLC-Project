@@ -316,7 +316,7 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
     match !scope_stack with
     | current::_ -> 
         Hashtbl.add current id ssa_id;  (* 添加到当前作用域 *)
-        id
+        id ^ "_Control"
     | [] -> failwith "No active scope"
   ) params in
 

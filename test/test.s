@@ -10,7 +10,7 @@ lw x5, 0(sp)
 addi sp, sp, 4
 addi sp, sp, -4
 sw ra, 0(sp)
-add x6, x4, x5
+add x6, x7, x8
 mv a0, x6
 lw ra, 0(sp)
 addi sp, sp, 4
