@@ -269,17 +269,15 @@ let tac_to_riscv tac_list =
     | TacAssign (x, y) :: xs ->
         let rx = base_var x in
         let ry = base_var y in
-        let getvar = handle_register_spill rx @ handle_register_spill ry  in
         if is_number ry then
-          aux (getvar @ [RLi (rx, int_of_string ry)] @ acc) xs  (* 如果右值是数字，使用 li 指令 *)
+          aux ([RLi (rx, int_of_string ry)] @ acc) xs  (* 如果右值是数字，使用 li 指令 *)
         else
-          aux (getvar @ [RMv (rx, ry)] @ acc) xs
+          aux ([RMv (rx, ry)] @ acc) xs
     | TacBinOp (x1, x, op, a) :: 
       TacUnOp (x3, "!", x2) :: 
       TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3 && op <> "&&" && op <> "||"->
         (* 优化模式：直接生成beq/bne指令 *)
-      let rx = base_var x and ra = base_var a in
-       let getvar = handle_register_spill rx @ handle_register_spill ra  in
+        let rx = base_var x and ra = base_var a in
         let instr = match op with
           | "==" -> RBne (rx, ra, label)  (* 生成beq指令 *)
           | "!=" -> RBeq (rx, ra, label)  (* 生成bne指令 *)
@@ -289,10 +287,9 @@ let tac_to_riscv tac_list =
           | ">=" -> RBlt (rx, ra, label)
           | _ -> failwith "Unsupported operation in if-goto"
         in
-        aux (getvar @ [instr] @ acc) xs
+        aux ([instr] @ acc) xs
     | TacBinOp (x, a, op, b) :: xs ->
         let rx = base_var x and ra = base_var a and rb = base_var b in
-        let getvar = handle_register_spill rx @ handle_register_spill ra @ handle_register_spill rb  in
         let inst = match op with
           | "+" -> [RAdd (rx, ra, rb)]
           | "-" -> [RSub (rx, ra, rb)]
@@ -309,57 +306,48 @@ let tac_to_riscv tac_list =
           | "||" -> [ROr (rx, ra, rb)]
           | _ -> [RAdd (rx, ra, rb)]
         in
-        aux (getvar @ inst @ acc) xs
+        aux (inst @ acc) xs
     | TacUnOp (x, op, a) :: xs -> 
       let rx = base_var x and ra = base_var a in
-       let getvar = handle_register_spill rx @ handle_register_spill ra  in
         let inst = match op with
           | "!" -> RSeqz (rx, ra)
           | "-" -> RNeg (rx, ra)
           | _ -> RComment ("a0", ("unop " ^ op), [])
         in
-        aux (getvar @ [inst] @ acc) xs
+        aux ([inst] @ acc) xs
     | TacLabel l :: xs when String.starts_with ~prefix:"if_" l || 
                            String.starts_with ~prefix:"then_" l || 
                            String.starts_with ~prefix:"while_" l-> aux (RLabel l :: acc) xs
     | TacGoto l :: xs -> aux (RJ l :: acc) xs
     | TacIfGoto (a, l) :: xs ->  
         let ra = base_var a in
-        let getvar = handle_register_spill ra  in
-      aux (getvar @ [RBnez (ra, l)] @ acc) xs
+      aux ([RBnez (ra, l)] @ acc) xs
     | TacParam a :: xs ->
         sp := !sp + 1;  
         let ra = base_var a in
-        let getvar = handle_register_spill ra  in
-          (* Printf.printf "Pushing parameter %s\n" ra ; *)
-        aux (getvar @ [RPush (ra, !sp * 4)] @ acc) xs;
+        aux ([RPush (ra, !sp * 4)] @ acc) xs;
     | TacCall (x, f, _n) :: xs ->
-      let rx = base_var x in
-       let getvar = handle_register_spill rx  in
-          (* Printf.printf "Calling function %s with return variable %s\n" f rx; *)
-      save_function_state ();     (* 保存调用者状态 *)
-          aux (getvar @ [RMv (rx, "a0")] @ [RCall f] @ acc) xs
+        let rx = base_var x in
+        save_function_state ();     (* 保存调用者状态 *)
+        aux ([RMv (rx, "a0")] @ [RCall f] @ acc) xs
     | TacReturn (Some a) :: xs -> 
         let ra = base_var a in
-        let getvar =  handle_register_spill ra  in
         save_function_state ();     (* 保存函数状态 *)
-      aux (getvar @ [RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
+        aux ([RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
     | TacReturn None :: xs -> aux (RRet None :: acc) xs
     | TacComment (t, s, a) :: TacLabel l :: xs -> 
       save_function_state ();     (* 保存当前函数状态 *)
       current_function := l;      (* 更新当前函数名 *)
       restore_function_state l;   (* 初始化新函数的状态 *)
       let identifier_name (id : identifier) : string = id in
-        let getvar = ref [] in 
       let an = List.map identifier_name a in
         let pops =
           List.mapi (fun i arg_var ->
             let ra = base_var arg_var in
-            (* getvar := !getvar @ handle_register_spill ra; *)
             RPop (ra, i * 4)
           ) an
         in
-        let insts = [RComment (t, s, an); RLabel l] @ !getvar @ pops @ [RPush ("ra", !current_stack_offset)] in
+        let insts = [RComment (t, s, an); RLabel l] @ pops @ [RPush ("ra", !current_stack_offset)] in
         sp := !sp - List.length a;
         aux (List.rev_append insts acc) xs
     | TacPhi (_, _, _) :: xs -> aux acc xs
