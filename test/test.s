@@ -2,16 +2,28 @@
 _start:
     j main 
 .global main                        
-# function add
-add:
+# function factorial
+factorial:
 lw x4, 0(sp)
-addi sp, sp, 4
-lw x5, 0(sp)
 addi sp, sp, 4
 addi sp, sp, -4
 sw ra, 0(sp)
-add x6, x7, x8
+li x5, 1
+bgt x4, x5, if_L0
+li x6, 1
 mv a0, x6
+lw ra, 0(sp)
+addi sp, sp, 4
+ret
+if_L0:
+li x7, 1
+sub x8, x4, x7
+addi sp, sp, -4
+sw x8, 0(sp)
+call factorial
+mv x9, a0
+mul x11, x4, x9
+mv a0, x11
 lw ra, 0(sp)
 addi sp, sp, 4
 ret
@@ -19,18 +31,14 @@ ret
 main:
 addi sp, sp, -4
 sw ra, 0(sp)
-li x4, 1
+li x4, 5
 mv x5, x4
-li x6, 2
-mv x7, x6
-addi sp, sp, -4
-sw x7, 0(sp)
 addi sp, sp, -4
 sw x5, 0(sp)
-call add
-mv x8, a0
-mv x9, x8
-mv a0, x9
+call factorial
+mv x6, a0
+mv x7, x6
+mv a0, x7
 lw ra, 0(sp)
 addi sp, sp, 4
 

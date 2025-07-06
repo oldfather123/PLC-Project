@@ -244,16 +244,6 @@ let is_number s =
     true
   with Failure _ -> false
 
-(* let base_var s =
-  if is_number s then
-    s  (* 如果是数字，直接返回数字字符串 *)
-  else
-    try 
-      let first = String.index s '_' in
-      let second = String.index_from s (first + 1) '_' in
-      let var_name = String.sub s 0 second in
-      get_register var_name
-    with _ -> get_register s *)
 let base_var s =
   if is_number s then s
   else
@@ -269,29 +259,6 @@ let base_var s =
         failwith (Printf.sprintf "Variable %s from function %s used in %s" 
           var_name func_name !current_function)
     with _ -> get_register s
-(* let base_var s =
-  if is_number s then s
-  else
-    try 
-      let first = String.index s '_' in        (* 找到第一个'_'，如 x_Control_1_main 中的第一个'_' *)
-      let second = String.index_from s (first + 1) '_' in  (* 找到第二个'_'，即 Control 后的'_' *)
-      let third = String.rindex s '_' in       (* 找到最后一个'_'，即 main 前的'_' *)
-      
-      (* 提取变量名和类型 *)
-      let var_name = String.sub s 0 first in   (* 获取变量名：x *)
-      let var_type = String.sub s (first + 1) (second - first - 1) in (* 获取类型：Control *)
-      let func_name = String.sub s (third + 1) (String.length s - third  - 1) in (* 获取函数名：main *)
-      Printf.printf "var_type %s func_name %s\n" var_type func_name;
-      (* 组合变量名和类型作为寄存器分配的键 *)
-      let register_key = Printf.sprintf "%s_%s" var_name var_type in
-      Printf.printf "register_key %s\n" register_key;
-      (* 检查当前函数是否与变量的函数名匹配 *)
-      if func_name = !current_function then
-        get_register register_key
-      else
-        failwith (Printf.sprintf "Variable %s(%s) from function %s used in %s" 
-          var_name var_type func_name !current_function)
-    with _ -> get_register s *)
 
 let tac_to_riscv tac_list =
   current_stack_offset := 0;  (* 初始化栈偏移量 *)
