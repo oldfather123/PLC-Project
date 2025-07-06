@@ -13,7 +13,7 @@ type tac =
   | TacComment of string * string * identifier list
   | TacPhi of string * string * string
 
-type scope_kind = While | If | Block
+type scope_kind = While | If | Block | FBlock
 
 let temp_counter = ref 0
 let if_label_counter = ref 0
@@ -53,23 +53,11 @@ let string_of_unop = function
 module SSAMap = Hashtbl
 let ssa_version () = Hashtbl.create 32
 
-(* let ssa_var_name name ver =
-  Printf.sprintf "%s_%d_%s" name ver !current_func
-
-let get_ssa_name env name =
-  try
-    let v = SSAMap.find env name in
-    ssa_var_name name v
-  with Not_found -> ssa_var_name name 0
-
-let inc_ssa_version env name =
-  let v = try SSAMap.find env name with Not_found -> 0 in
-  SSAMap.replace env name (v + 1);
-  ssa_var_name name (v + 1) *)
 
 let ssa_var_name name ver scope_type =
   match scope_type with
   | `Block -> Printf.sprintf "%s_%s_%d_%s" name "Block" ver !current_func  
+  | `FBlock -> Printf.sprintf "%s_%s_%d_%s" name "FBlock" ver !current_func
   | `Control -> Printf.sprintf "%s_%s_%d_%s" name "Control" ver !current_func   
 
 (* 修改 get_ssa_name 函数 *)
@@ -96,16 +84,6 @@ let get_current_scope_type scope_stack =
   if is_in_block scope_stack then `Block
   else `Control
 
-(* 创建新作用域
-let push_scope () =
-  scope_stack := (Hashtbl.create 32) :: !scope_stack
-
-(* 移除当前作用域 *)
-let pop_scope () =
-  match !scope_stack with
-  | _::rest -> scope_stack := rest
-  | [] -> failwith "No scope to pop" *)
-
 (* 修改 push_scope 函数 *)
 let push_scope (kind:scope_kind) =
   scope_kinds := kind :: !scope_kinds;
@@ -118,6 +96,7 @@ let pop_scope () =
       scope_stack := rest;
       scope_kinds := rest_kinds
   | _ -> failwith "No scope to pop"
+
 
 (* 在作用域栈中查找变量 *)
 let rec lookup_var name = function
@@ -161,7 +140,6 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
 
 let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac list ref) : unit =
   match s with
-  (* | Block stmts -> List.iter (fun st -> gen_stmt st env code) stmts *)
   | Block stmts -> 
       push_scope Block;  (* 创建新作用域 *)
       let old_env = Hashtbl.copy env in  (* 保存旧环境 *)
@@ -169,7 +147,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       (* 恢复旧环境并弹出作用域 *)
       Hashtbl.clear env;
       Hashtbl.iter (fun k v -> Hashtbl.add env k v) old_env;
-      pop_scope ()
+      pop_scope ();
   | EmptyStmt -> ()
   | ExprStmt e -> ignore (gen_expr e env code)
   | Assignment (id, e) ->
@@ -177,14 +155,17 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let ssa_id = 
         match lookup_var id !scope_stack with
         | Some v -> v
-        (* | None -> inc_ssa_version env id *)
         | None -> 
           let scope_type = 
             match !scope_kinds with
-            | While::_ | If::_ -> `Control  (* 在循环或条件语句中 *)
+            | Block :: FBlock :: _ -> 
+                `Control  (* 如果是最外层的Block，则是函数作用域，使用Control类型 *)
+            | While::_ | If::_ -> 
+                `Control  (* 控制结构中使用Control类型 *)
+            | Block::_ -> 
+                `Block   (* 嵌套块中使用Block类型 *)
             | _ -> 
-                if List.length !scope_stack > 1 then `Block 
-                else `Control
+                `Control (* 默认使用Control类型 *)
           in
           inc_ssa_version env id scope_type
       in
@@ -193,13 +174,14 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let t = gen_expr e env code in
       let scope_type = 
       match !scope_kinds with
-      | kinds -> 
-          if List.exists (function While | If -> true | _ -> false) kinds
-          then `Control  (* 在控制结构中声明的变量使用Control类型 *)
-          else 
-            if List.length !scope_stack > 1 
-            then `Block  (* 在纯代码块中声明的变量使用Block类型 *)
-            else `Control  (* 最外层作用域使用Control类型 *)
+      | Block :: FBlock :: _ -> 
+          `Control  (* 如果是最外层的Block，则是函数作用域，使用Control类型 *)
+      | While::_ | If::_ -> 
+          `Control  (* 控制结构中使用Control类型 *)
+      | Block::_ -> 
+          `Block   (* 嵌套块中使用Block类型 *)
+      | _ -> 
+          `Control (* 默认使用Control类型 *)
     in
       let ssa_id = inc_ssa_version env id scope_type in
       (match !scope_stack with
@@ -234,11 +216,6 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           List.iter (fun var_name ->
             let then_ver = try Hashtbl.find env_then var_name with Not_found -> Hashtbl.find env var_name in
             let else_ver = try Hashtbl.find env_else var_name with Not_found -> Hashtbl.find env var_name in
-            (* let then_ssa = ssa_var_name var_name then_ver in
-            let else_ssa = ssa_var_name var_name else_ver in
-            let merged_ver = max then_ver else_ver + 1 in
-            Hashtbl.replace env var_name merged_ver;
-            let phi_name = ssa_var_name var_name merged_ver in *)
             let scope_type = get_current_scope_type !scope_stack in
             let then_ssa = ssa_var_name var_name then_ver scope_type in
             let else_ssa = ssa_var_name var_name else_ver scope_type in
@@ -307,7 +284,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       code := !code @ [TacLabel l_end];
       break_stack := List.tl !break_stack
     end;
-      pop_scope ()
+      pop_scope ();
 
    | BreakStmt ->
       (match !break_stack with
@@ -328,9 +305,23 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
 
 let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
   current_func := name;
-  let a = List.map (function Param id -> id) params in
+  (* let a = List.map (function Param id -> id) params in
   let t = new_temp () in
-  let code = ref [TacComment (t, "function " ^ name, a)] in
+  let code = ref [TacComment (t, "function " ^ name, a)] in *)
+  let env = ssa_version () in
+  push_scope FBlock;  (* 创建函数作用域 *)
+  (* 处理函数参数 *)
+  let param_names = List.map (function Param id -> 
+    let ssa_id = get_ssa_name env id `Control in  (* 使用Control类型 *)
+    match !scope_stack with
+    | current::_ -> 
+        Hashtbl.add current id ssa_id;  (* 添加到当前作用域 *)
+        id
+    | [] -> failwith "No active scope"
+  ) params in
+
+  let t = new_temp () in
+  let code = ref [TacComment (t, "function " ^ name, param_names)] in
   code := !code @ [TacLabel name];
   let env = ssa_version () in
   gen_stmt body env code;
@@ -340,6 +331,7 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
        | TacReturn None -> ()
        | _ -> code := !code @ [TacReturn None])
    | _ -> ());
+   pop_scope ();  (* 弹出函数作用域 *)
   !code
 
 let gen_comp_unit (cu : comp_unit) : tac list =

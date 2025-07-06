@@ -19,21 +19,21 @@ bge x9, x8, while_L2
 while_L1:
 li x11, 1
 add x12, x9, x11
-mv x13, x12
-li x14, 3
-bne x9, x14, if_L0
+mv x9, x12
+li x13, 3
+bne x9, x13, if_L0
 j while_L3
 if_L0:
 bne x9, x7, if_L1
 j while_L2
 if_L1:
-add x15, x16, x9
-mv x17, x15
+add x14, x15, x9
+mv x15, x14
 j while_L0
 while_L3:
 j while_L0
 while_L2:
-mv a0, x16
+mv a0, x15
 lw ra, 0(sp)
 addi sp, sp, 4
 ret
@@ -41,18 +41,18 @@ ret
 main:
 addi sp, sp, -4
 sw ra, 0(sp)
-li x18, 0
-mv x9, x18
-li x19, 0
-mv x16, x19
+li x16, 0
+mv x9, x16
+li x17, 0
+mv x15, x17
 addi sp, sp, -4
-sw x16, 0(sp)
+sw x15, 0(sp)
 addi sp, sp, -4
 sw x9, 0(sp)
 call func
-mv x20, a0
-mv x21, x20
-mv a0, x21
+mv x18, a0
+mv x19, x18
+mv a0, x19
 lw ra, 0(sp)
 addi sp, sp, 4
 
