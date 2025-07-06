@@ -40,6 +40,12 @@ type var_location =
   | InReg of string      (* 在寄存器中 *)
   | InStack of int       (* 在栈中的偏移量 *)
 
+type reg_spill_status = {
+    needs_pop: bool;
+    needs_push: bool;
+}
+
+
 let stack_vars = Hashtbl.create 100  (* 变量到栈位置的映射 *)
 let current_stack_offset = ref 0  
 
@@ -112,6 +118,26 @@ let free_register reg =
 let popsig = ref (false, "")
 let pushsig = ref (false, "")
 
+let reg_spill_status = Hashtbl.create 100
+let handle_register_spill reg =
+    let spill_ops = ref [] in
+    try
+        let status = Hashtbl.find reg_spill_status reg in
+        if status.needs_pop then
+            spill_ops := !spill_ops @ [RPop (reg, 0)];
+        if status.needs_push then
+          Printf.printf "Spilling %s to stack\n" reg;
+            spill_ops := !spill_ops @ [RPush (reg, 0)];
+        Hashtbl.remove reg_spill_status reg;
+        !spill_ops
+    with Not_found -> []
+let update_reg_spill_status reg needs_pop needs_push =
+  let status = {
+    needs_pop = needs_pop;
+    needs_push = needs_push;
+  } in
+  Hashtbl.replace reg_spill_status reg status
+
 (* 为变量分配寄存器 *)
 let get_register var =
   try 
@@ -129,7 +155,7 @@ let get_register var =
           let reg = Printf.sprintf "x%d" reg_num in
           (* 从栈中加载到寄存器 *)
           ignore (load_from_stack var reg);
-          popsig := (true, reg);
+          update_reg_spill_status reg true false;
           reg_pool.(reg_num) <- Used;
           Hashtbl.add var_to_reg var reg;
           Hashtbl.add reg_to_var reg var;
@@ -141,7 +167,7 @@ let get_register var =
           let victim_var = Hashtbl.find reg_to_var victim_reg in
           (* 将受害者变量保存到栈中 *)
           ignore (spill_to_stack victim_var victim_reg);
-          pushsig := (true, victim_reg);
+          update_reg_spill_status victim_reg false true;
           free_register victim_reg;
           (* 为新变量分配寄存器 *)
           Hashtbl.add var_to_reg var victim_reg;
@@ -161,7 +187,7 @@ let get_register var =
           let victim_reg = find_victim_register () in
           let victim_var = Hashtbl.find reg_to_var victim_reg in
           ignore (spill_to_stack victim_var victim_reg);
-          pushsig := (true, victim_reg);
+          update_reg_spill_status victim_reg false true;
           free_register victim_reg;
           Hashtbl.add var_to_reg var victim_reg;
           Hashtbl.add reg_to_var victim_reg var;
@@ -191,12 +217,15 @@ let base_var s =
     with _ -> get_register s
 
 let cleanup_registers () =
+  Hashtbl.clear reg_spill_status;  (* 清除溢出状态表 *)
   Hashtbl.iter (fun _ reg -> free_register reg) var_to_reg;
   for i = 1 to 31 do
-    reg_pool.(i) <- Free
+    reg_pool.(i) <- Free;
+    reg_use_count.(i) <- 0
   done;
   Hashtbl.clear var_to_reg;
-  Hashtbl.clear reg_to_var
+  Hashtbl.clear reg_to_var;
+  Hashtbl.clear stack_vars
 
 let tac_to_riscv tac_list =
   current_stack_offset := 0;  (* 初始化栈偏移量 *)
@@ -205,59 +234,19 @@ let tac_to_riscv tac_list =
   let rec aux acc = function
     | [] -> List.rev acc
     | TacAssign (x, y) :: xs ->
-        let getvar = ref [] in
         let rx = base_var x in
-        if !popsig = (true, rx) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, rx) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
         let ry = base_var y in
-        if !popsig = (true, ry) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ry, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ry) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ry, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
+        let getvar = handle_register_spill rx @ handle_register_spill ry  in
         if is_number ry then
-          aux (!getvar @ [RLi (rx, int_of_string ry)] @ acc) xs  (* 如果右值是数字，使用 li 指令 *)
+          aux (getvar @ [RLi (rx, int_of_string ry)] @ acc) xs  (* 如果右值是数字，使用 li 指令 *)
         else
-          aux (!getvar @ [RMv (rx, ry)] @ acc) xs
+          aux (getvar @ [RMv (rx, ry)] @ acc) xs
     | TacBinOp (x1, x, op, a) :: 
       TacUnOp (x3, "!", x2) :: 
       TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3 && op <> "&&" && op <> "||"->
         (* 优化模式：直接生成beq/bne指令 *)
-        let getvar = ref [] in  
       let rx = base_var x and ra = base_var a in
-       if !popsig = (true, rx) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, rx) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
+       let getvar = handle_register_spill rx @ handle_register_spill ra  in
         let instr = match op with
           | "==" -> RBne (rx, ra, label)  (* 生成beq指令 *)
           | "!=" -> RBeq (rx, ra, label)  (* 生成bne指令 *)
@@ -267,40 +256,10 @@ let tac_to_riscv tac_list =
           | ">=" -> RBlt (rx, ra, label)
           | _ -> failwith "Unsupported operation in if-goto"
         in
-        aux (!getvar @ [instr] @ acc) xs
+        aux (getvar @ [instr] @ acc) xs
     | TacBinOp (x, a, op, b) :: xs ->
-        let getvar = ref [] in
         let rx = base_var x and ra = base_var a and rb = base_var b in
-        if !popsig = (true, rx) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, rx) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !popsig = (true, rb) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (rb, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, rb) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (rb, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
+        let getvar = handle_register_spill rx @ handle_register_spill ra @ handle_register_spill rb  in
         let inst = match op with
           | "+" -> [RAdd (rx, ra, rb)]
           | "-" -> [RSub (rx, ra, rb)]
@@ -317,97 +276,39 @@ let tac_to_riscv tac_list =
           | "||" -> [ROr (rx, ra, rb)]
           | _ -> [RAdd (rx, ra, rb)]
         in
-        aux (!getvar @ inst @ acc) xs
-    | TacUnOp (x, op, a) :: xs ->
-      let getvar = ref [] in  
+        aux (getvar @ inst @ acc) xs
+    | TacUnOp (x, op, a) :: xs -> 
       let rx = base_var x and ra = base_var a in
-       if !popsig = (true, rx) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, rx) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
+       let getvar = handle_register_spill rx @ handle_register_spill ra  in
         let inst = match op with
           | "!" -> RSeqz (rx, ra)
           | "-" -> RNeg (rx, ra)
           | _ -> RComment ("a0", ("unop " ^ op), [])
         in
-        aux (!getvar @ [inst] @ acc) xs
+        aux (getvar @ [inst] @ acc) xs
     | TacLabel l :: xs when String.starts_with ~prefix:"if_" l || 
                            String.starts_with ~prefix:"then_" l || 
                            String.starts_with ~prefix:"while_" l-> aux (RLabel l :: acc) xs
     | TacGoto l :: xs -> aux (RJ l :: acc) xs
-    | TacIfGoto (a, l) :: xs -> 
-      let getvar = ref [] in  
+    | TacIfGoto (a, l) :: xs ->  
         let ra = base_var a in
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-      aux (RBnez (ra, l) :: acc) xs
+        let getvar = handle_register_spill ra  in
+      aux (getvar @ [RBnez (ra, l)] @ acc) xs
     | TacParam a :: xs ->
-        sp := !sp + 1; 
-        let getvar = ref [] in  
+        sp := !sp + 1;  
         let ra = base_var a in
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        aux (!getvar @ [RPush (ra, !sp * 4)] @ acc) xs;
+        let getvar = handle_register_spill ra  in
+          Printf.printf "Pushing parameter %s\n" ra ;
+        aux (getvar @ [RPush (ra, !sp * 4)] @ acc) xs;
     | TacCall (x, f, _n) :: xs ->
-      let getvar = ref [] in  
       let rx = base_var x in
-       if !popsig = (true, rx) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, rx) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (rx, !current_stack_offset)])
-        else
-          getvar := !getvar @ []; 
-      aux (!getvar @ [RMv (rx, "a0")] @ RCall f :: acc) xs
+       let getvar = handle_register_spill rx  in
+          Printf.printf "Calling function %s with return variable %s\n" f rx;
+      aux (getvar @ [RMv (rx, "a0")] @ [RCall f] @ acc) xs
     | TacReturn (Some a) :: xs -> 
-      let getvar = ref [] in  
         let ra = base_var a in
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-      aux (!getvar @ [RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
+        let getvar =  handle_register_spill ra  in
+      aux (getvar @ [RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
     | TacReturn None :: xs -> aux (RRet None :: acc) xs
     | TacComment (t, s, a) :: TacLabel l :: xs -> 
       let identifier_name (id : identifier) : string = id in
@@ -416,16 +317,7 @@ let tac_to_riscv tac_list =
         let pops =
           List.mapi (fun i arg_var ->
             let ra = base_var arg_var in
-        if !popsig = (true, ra) then
-          (popsig := (false, "");
-          getvar := !getvar @ [RPop (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
-        if !pushsig = (true, ra) then
-          (pushsig := (false, "");
-          getvar := !getvar @ [RPush (ra, !current_stack_offset)])
-        else
-          getvar := !getvar @ [];
+            (* getvar := !getvar @ handle_register_spill ra; *)
             RPop (ra, i * 4)
           ) an
         in
