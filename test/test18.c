@@ -1,6 +1,4 @@
-int main() {
-    int i = 0;
-    int sum = 0;
+int func(int i, int sum) {
     int y = 8;
     // 外层循环
     while(i < 10) {
@@ -14,4 +12,10 @@ int main() {
         sum = sum + i;
     }
     return sum;  // 预期结果：1 + 2 + 4 + 5 + 6 + 7 = 25
+}
+int main() {
+    int i = 0;
+    int sum = 0;
+    int result = func (i, sum);
+    return result;  // 应该返回25
 }

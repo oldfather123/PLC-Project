@@ -53,19 +53,6 @@ let string_of_unop = function
 module SSAMap = Hashtbl
 let ssa_version () = Hashtbl.create 32
 
-(* let ssa_var_name name ver =
-  Printf.sprintf "%s_%d_%s" name ver !current_func
-
-let get_ssa_name env name =
-  try
-    let v = SSAMap.find env name in
-    ssa_var_name name v
-  with Not_found -> ssa_var_name name 0
-
-let inc_ssa_version env name =
-  let v = try SSAMap.find env name with Not_found -> 0 in
-  SSAMap.replace env name (v + 1);
-  ssa_var_name name (v + 1) *)
 
 let ssa_var_name name ver scope_type =
   match scope_type with
@@ -95,16 +82,6 @@ let get_current_scope_type scope_stack =
   in
   if is_in_block scope_stack then `Block
   else `Control
-
-(* 创建新作用域
-let push_scope () =
-  scope_stack := (Hashtbl.create 32) :: !scope_stack
-
-(* 移除当前作用域 *)
-let pop_scope () =
-  match !scope_stack with
-  | _::rest -> scope_stack := rest
-  | [] -> failwith "No scope to pop" *)
 
 (* 修改 push_scope 函数 *)
 let push_scope (kind:scope_kind) =
@@ -161,7 +138,6 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
 
 let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac list ref) : unit =
   match s with
-  (* | Block stmts -> List.iter (fun st -> gen_stmt st env code) stmts *)
   | Block stmts -> 
       push_scope Block;  (* 创建新作用域 *)
       let old_env = Hashtbl.copy env in  (* 保存旧环境 *)
@@ -177,7 +153,6 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let ssa_id = 
         match lookup_var id !scope_stack with
         | Some v -> v
-        (* | None -> inc_ssa_version env id *)
         | None -> 
           let scope_type = 
             match !scope_kinds with
@@ -234,11 +209,6 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           List.iter (fun var_name ->
             let then_ver = try Hashtbl.find env_then var_name with Not_found -> Hashtbl.find env var_name in
             let else_ver = try Hashtbl.find env_else var_name with Not_found -> Hashtbl.find env var_name in
-            (* let then_ssa = ssa_var_name var_name then_ver in
-            let else_ssa = ssa_var_name var_name else_ver in
-            let merged_ver = max then_ver else_ver + 1 in
-            Hashtbl.replace env var_name merged_ver;
-            let phi_name = ssa_var_name var_name merged_ver in *)
             let scope_type = get_current_scope_type !scope_stack in
             let then_ssa = ssa_var_name var_name then_ver scope_type in
             let else_ssa = ssa_var_name var_name else_ver scope_type in
