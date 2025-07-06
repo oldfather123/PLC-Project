@@ -13,6 +13,8 @@ type tac =
   | TacComment of string * string * identifier list
   | TacPhi of string * string * string
 
+type scope_kind = While | If | Block
+
 let temp_counter = ref 0
 let if_label_counter = ref 0
 let then_label_counter = ref 0
@@ -21,6 +23,7 @@ let break_stack = ref []
 let continue_stack = ref []
 let current_func = ref ""
 let scope_stack = ref []
+let scope_kinds = ref []
 
 let new_temp () =
   let t = Printf.sprintf "t%d" !temp_counter in
@@ -50,7 +53,7 @@ let string_of_unop = function
 module SSAMap = Hashtbl
 let ssa_version () = Hashtbl.create 32
 
-let ssa_var_name name ver =
+(* let ssa_var_name name ver =
   Printf.sprintf "%s_%d_%s" name ver !current_func
 
 let get_ssa_name env name =
@@ -62,9 +65,38 @@ let get_ssa_name env name =
 let inc_ssa_version env name =
   let v = try SSAMap.find env name with Not_found -> 0 in
   SSAMap.replace env name (v + 1);
-  ssa_var_name name (v + 1)
+  ssa_var_name name (v + 1) *)
 
-(* 创建新作用域 *)
+let ssa_var_name name ver scope_type =
+  match scope_type with
+  | `Block -> Printf.sprintf "%s_%s_%d_%s" name "Block" ver !current_func  
+  | `Control -> Printf.sprintf "%s_%s_%d_%s" name "Control" ver !current_func   
+
+(* 修改 get_ssa_name 函数 *)
+let get_ssa_name env name scope_type =
+  try
+    let v = SSAMap.find env name in
+    ssa_var_name name v scope_type
+  with Not_found -> ssa_var_name name 0 scope_type
+
+(* 修改 inc_ssa_version 函数 *)
+let inc_ssa_version env name scope_type =
+  let v = try SSAMap.find env name with Not_found -> 0 in
+  SSAMap.replace env name (v + 1);
+  ssa_var_name name (v + 1) scope_type
+
+(* 添加作用域类型判断函数 *)
+let get_current_scope_type scope_stack =
+  let is_in_block = function
+    | [] -> false
+    | _::rest -> 
+        if List.length rest > 1 then true  (* 嵌套块 *)
+        else false
+  in
+  if is_in_block scope_stack then `Block
+  else `Control
+
+(* 创建新作用域
 let push_scope () =
   scope_stack := (Hashtbl.create 32) :: !scope_stack
 
@@ -72,7 +104,20 @@ let push_scope () =
 let pop_scope () =
   match !scope_stack with
   | _::rest -> scope_stack := rest
-  | [] -> failwith "No scope to pop"
+  | [] -> failwith "No scope to pop" *)
+
+(* 修改 push_scope 函数 *)
+let push_scope (kind:scope_kind) =
+  scope_kinds := kind :: !scope_kinds;
+  scope_stack := (Hashtbl.create 32) :: !scope_stack
+
+(* 修改 pop_scope 函数 *)
+let pop_scope () =
+  match !scope_stack, !scope_kinds with
+  | _::rest, _::rest_kinds -> 
+      scope_stack := rest;
+      scope_kinds := rest_kinds
+  | _ -> failwith "No scope to pop"
 
 (* 在作用域栈中查找变量 *)
 let rec lookup_var name = function
@@ -84,7 +129,14 @@ let rec lookup_var name = function
 
 let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac list ref) : string =
   match e with
-  | Identifier id -> get_ssa_name env id
+  (* | Identifier id -> get_ssa_name env id *)
+  | Identifier id -> 
+    (* 查找变量最近的定义 *)
+    (match lookup_var id !scope_stack with
+    | Some v -> v  (* 如果找到了变量的定义，直接使用它的SSA名称 *)
+    | None -> 
+        (* 如果在当前作用域中找不到，使用Control类型作为默认类型 *)
+        get_ssa_name env id `Control)
   | Number n ->
       let t = new_temp () in
       code := !code @ [TacAssign (t, string_of_int n)];
@@ -111,7 +163,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
   match s with
   (* | Block stmts -> List.iter (fun st -> gen_stmt st env code) stmts *)
   | Block stmts -> 
-      push_scope ();  (* 创建新作用域 *)
+      push_scope Block;  (* 创建新作用域 *)
       let old_env = Hashtbl.copy env in  (* 保存旧环境 *)
       List.iter (fun st -> gen_stmt st env code) stmts;
       (* 恢复旧环境并弹出作用域 *)
@@ -122,22 +174,40 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
   | ExprStmt e -> ignore (gen_expr e env code)
   | Assignment (id, e) ->
       let t = gen_expr e env code in
-      (* let ssa_id = inc_ssa_version env id in *)
       let ssa_id = 
         match lookup_var id !scope_stack with
         | Some v -> v
-        | None -> inc_ssa_version env id
+        (* | None -> inc_ssa_version env id *)
+        | None -> 
+          let scope_type = 
+            match !scope_kinds with
+            | While::_ | If::_ -> `Control  (* 在循环或条件语句中 *)
+            | _ -> 
+                if List.length !scope_stack > 1 then `Block 
+                else `Control
+          in
+          inc_ssa_version env id scope_type
       in
       code := !code @ [TacAssign (ssa_id, t)]
   | VarDecl (id, e) ->
       let t = gen_expr e env code in
-      let ssa_id = inc_ssa_version env id in
-      (* code := !code @ [TacAssign (ssa_id, t)] *)
+      let scope_type = 
+      match !scope_kinds with
+      | kinds -> 
+          if List.exists (function While | If -> true | _ -> false) kinds
+          then `Control  (* 在控制结构中声明的变量使用Control类型 *)
+          else 
+            if List.length !scope_stack > 1 
+            then `Block  (* 在纯代码块中声明的变量使用Block类型 *)
+            else `Control  (* 最外层作用域使用Control类型 *)
+    in
+      let ssa_id = inc_ssa_version env id scope_type in
       (match !scope_stack with
        | current::_ -> Hashtbl.add current id ssa_id
        | [] -> failwith "No active scope");
       code := !code @ [TacAssign (ssa_id, t)]
    | IfStmt (cond, then_s, else_s_opt) ->
+    push_scope If;
     let cond_t = gen_expr cond env code in
     let cond_not_t = new_temp () in
     code := !code @ [TacUnOp (cond_not_t, "!", cond_t)];
@@ -164,20 +234,28 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           List.iter (fun var_name ->
             let then_ver = try Hashtbl.find env_then var_name with Not_found -> Hashtbl.find env var_name in
             let else_ver = try Hashtbl.find env_else var_name with Not_found -> Hashtbl.find env var_name in
-            let then_ssa = ssa_var_name var_name then_ver in
+            (* let then_ssa = ssa_var_name var_name then_ver in
             let else_ssa = ssa_var_name var_name else_ver in
-            (* if then_ssa <> else_ssa then *)
             let merged_ver = max then_ver else_ver + 1 in
             Hashtbl.replace env var_name merged_ver;
-            let phi_name = ssa_var_name var_name merged_ver in
+            let phi_name = ssa_var_name var_name merged_ver in *)
+            let scope_type = get_current_scope_type !scope_stack in
+            let then_ssa = ssa_var_name var_name then_ver scope_type in
+            let else_ssa = ssa_var_name var_name else_ver scope_type in
+            let merged_ver = max then_ver else_ver + 1 in
+            Hashtbl.replace env var_name merged_ver;
+            let phi_name = ssa_var_name var_name merged_ver scope_type in
             code := !code @ [TacPhi (phi_name, then_ssa, else_ssa)]
-          ) vars  
+          ) vars;
+          pop_scope();  
       | None ->
         let l_end = if_new_label () in
         code := !code @ [TacIfGoto (cond_not_t, l_end)];
         gen_stmt then_s env code;
-        code := !code @ [TacLabel l_end])
+        code := !code @ [TacLabel l_end];
+        pop_scope();)
    | WhileStmt (cond, body) ->
+      push_scope While;
       let l_cond = while_new_label () in
       let l_body = while_new_label () in
       let l_end = while_new_label () in
@@ -228,7 +306,8 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       code := !code @ [TacGoto l_cond];  
       code := !code @ [TacLabel l_end];
       break_stack := List.tl !break_stack
-    end
+    end;
+      pop_scope ()
 
    | BreakStmt ->
       (match !break_stack with

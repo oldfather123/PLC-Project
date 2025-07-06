@@ -185,7 +185,8 @@ let base_var s =
   else
     try 
       let first = String.index s '_' in
-      let var_name = String.sub s 0 first in
+      let second = String.index_from s (first + 1) '_' in
+      let var_name = String.sub s 0 second in
       get_register var_name
     with _ -> get_register s
 
