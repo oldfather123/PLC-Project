@@ -2,9 +2,11 @@
 	.attribute	4, 16
 	.attribute	5, "rv64i2p1_m2p0_a2p1_c2p0"
 	.file	"test21.c"
-	.globl	factorial                       # -- Begin function factorial
 	.p2align	1
 	.type	factorial,@function
+	.globl _start
+_start:
+    j main       # 调用 main 函数
 factorial:                              # @factorial
 # %bb.0:
 	addi	sp, sp, -32
@@ -37,12 +39,6 @@ factorial:                              # @factorial
 	ld	s0, 16(sp)                      # 8-byte Folded Reload
 	addi	sp, sp, 32
 	ret
-.Lfunc_end0:
-	.size	factorial, .Lfunc_end0-factorial
-                                        # -- End function
-	.globl	main                            # -- Begin function main
-	.p2align	1
-	.type	main,@function
 main:                                   # @main
 # %bb.0:
 	addi	sp, sp, -32
@@ -60,11 +56,7 @@ main:                                   # @main
 	ld	ra, 24(sp)                      # 8-byte Folded Reload
 	ld	s0, 16(sp)                      # 8-byte Folded Reload
 	addi	sp, sp, 32
-	ret
-.Lfunc_end1:
-	.size	main, .Lfunc_end1-main
-                                        # -- End function
-	.ident	"Ubuntu clang version 18.1.3 (1ubuntu1)"
-	.section	".note.GNU-stack","",@progbits
-	.addrsig
-	.addrsig_sym factorial
+	# 添加系统调用退出
+	li a7, 93         # exit 系统调用号
+	ecall             # 执行系统调用
+	ret               # 这行实际上不会执行到

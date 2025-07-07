@@ -264,6 +264,7 @@ let tac_to_riscv tac_list =
   current_stack_offset := 0;  (* 初始化栈偏移量 *)
   Hashtbl.clear stack_vars;   (* 清空栈变量表 *)
   Array.fill reg_use_count 0 32 0;
+  let param_stack = ref [] in
   let rec aux acc = function
     | [] -> List.rev acc
     | TacAssign (x, y) :: xs ->
@@ -322,14 +323,44 @@ let tac_to_riscv tac_list =
     | TacIfGoto (a, l) :: xs ->  
         let ra = base_var a in
       aux ([RBnez (ra, l)] @ acc) xs
-    | TacParam a :: xs ->
+    (* | TacParam a :: xs ->
         sp := !sp + 1;  
         let ra = base_var a in
         aux ([RPush (ra, !sp * 4)] @ acc) xs;
     | TacCall (x, f, _n) :: xs ->
         let rx = base_var x in
         save_function_state ();     (* 保存调用者状态 *)
-        aux ([RMv (rx, "a0")] @ [RCall f] @ acc) xs
+        aux ([RMv (rx, "a0")] @ [RCall f] @ acc) xs *)
+    | TacParam a :: xs ->
+        sp := !sp + 1;  
+        let ra = base_var a in
+        param_stack := !param_stack @ [ra];
+        aux acc xs
+    | TacCall (x, f, _n) :: xs ->
+        let rx = base_var x in
+        (* 保存所有正在使用的寄存器到栈中 *)
+        save_function_state ();     (* 保存调用者状态 *)
+        let save_regs = ref [] in
+        for i = 3 to 31 do
+          if reg_pool.(i) = Used then
+            save_regs := !save_regs @ [RPush ("x" ^ string_of_int i, !current_stack_offset)];
+            current_stack_offset := !current_stack_offset - 4;
+        done;
+        let param_insts = List.mapi (fun i ra ->
+          RPush (ra, i * 4)
+        ) !param_stack in
+        (* 调用函数 *)
+        let call_inst = [RCall f] in
+        (* 恢复所有寄存器 *)
+        let restore_regs = ref [] in
+        for i = 31 downto 3 do
+          if reg_pool.(i) = Used then
+            restore_regs := !restore_regs @ [RPop ("x" ^ string_of_int i, !current_stack_offset)];
+            current_stack_offset := !current_stack_offset + 4;
+        done;
+        param_stack := [];
+        (* 生成最终代码 *)
+        aux ([RMv (rx, "a0")] @ !restore_regs @ call_inst @ param_insts @ !save_regs @ acc) xs
     | TacReturn (Some a) :: xs -> 
         let ra = base_var a in
         save_function_state ();     (* 保存函数状态 *)
