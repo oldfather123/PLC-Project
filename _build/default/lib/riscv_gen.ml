@@ -323,14 +323,6 @@ let tac_to_riscv tac_list =
     | TacIfGoto (a, l) :: xs ->  
         let ra = base_var a in
       aux ([RBnez (ra, l)] @ acc) xs
-    (* | TacParam a :: xs ->
-        sp := !sp + 1;  
-        let ra = base_var a in
-        aux ([RPush (ra, !sp * 4)] @ acc) xs;
-    | TacCall (x, f, _n) :: xs ->
-        let rx = base_var x in
-        save_function_state ();     (* 保存调用者状态 *)
-        aux ([RMv (rx, "a0")] @ [RCall f] @ acc) xs *)
     | TacParam a :: xs ->
         sp := !sp + 1;  
         let ra = base_var a in
@@ -365,7 +357,7 @@ let tac_to_riscv tac_list =
         let ra = base_var a in
         save_function_state ();     (* 保存函数状态 *)
         aux ([RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
-    | TacReturn None :: xs -> aux (RRet None :: acc) xs
+    | TacReturn None :: xs -> aux (RRet None :: RPop ("ra", !current_stack_offset) :: acc) xs
     | TacComment (t, s, a) :: TacLabel l :: xs -> 
       save_function_state ();     (* 保存当前函数状态 *)
       current_function := l;      (* 更新当前函数名 *)

@@ -2,16 +2,15 @@
 _start:
     j main 
 .global main                        
-# function add
-add:
-lw x4, 0(sp)
-addi sp, sp, 4
-lw x5, 0(sp)
-addi sp, sp, 4
+# function print
+print:
 addi sp, sp, -4
 sw ra, 0(sp)
-add x6, x4, x5
-mv a0, x6
+li x4, 1
+mv x5, x4
+li x6, 1
+add x7, x5, x6
+mv x5, x7
 lw ra, 0(sp)
 addi sp, sp, 4
 ret
@@ -19,38 +18,14 @@ ret
 main:
 addi sp, sp, -4
 sw ra, 0(sp)
-li x4, 1
-mv x5, x4
-li x6, 2
-mv x7, x6
-addi sp, sp, -4
-sw x8, 0(sp)
-addi sp, sp, -4
-sw x7, 0(sp)
-addi sp, sp, -4
-sw x6, 0(sp)
-addi sp, sp, -4
-sw x5, 0(sp)
 addi sp, sp, -4
 sw x4, 0(sp)
-addi sp, sp, -4
-sw x5, 0(sp)
-addi sp, sp, -4
-sw x7, 0(sp)
-call add
+call print
 lw x4, 0(sp)
 addi sp, sp, 4
-lw x5, 0(sp)
-addi sp, sp, 4
-lw x6, 0(sp)
-addi sp, sp, 4
-lw x7, 0(sp)
-addi sp, sp, 4
-lw x8, 0(sp)
-addi sp, sp, 4
-mv x8, a0
-mv x9, x8
-mv a0, x9
+mv x4, a0
+li x5, 0
+mv a0, x5
 lw ra, 0(sp)
 addi sp, sp, 4
 
