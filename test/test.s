@@ -354,7 +354,7 @@ j while_L3
 while_L5:
 li x7, 8
 rem x7, x12, x7
-li x8, 3
+li x8, 4
 addi sp, sp, -4
 sw x31, 0(sp)
 addi sp, sp, -4
