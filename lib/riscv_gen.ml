@@ -339,8 +339,14 @@ let tac_to_riscv tac_list =
             current_stack_offset := !current_stack_offset - 4;
         done;
         let param_insts = List.mapi (fun i ra ->
-          RPush (ra, i * 4)
-        ) !param_stack in
+          if is_number ra then
+            (* 如果 ra 是数字，申请一个寄存器并加载数字 *)
+            let temp_reg = get_register ("temp_" ^ string_of_int i) in
+            [RPush (temp_reg, i * 4); RLi (temp_reg, int_of_string ra)]
+          else
+            (* 如果 ra 不是数字，直接生成 RPush 指令 *)
+            [RPush (ra, i * 4)]
+        ) !param_stack |> List.flatten in
         (* 调用函数 *)
         let call_inst = [RCall f] in
         (* 恢复所有寄存器 *)
