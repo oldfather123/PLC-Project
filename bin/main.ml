@@ -226,6 +226,6 @@ let () =
     print_riscv (riscv_list); *)
 
   with
-  | Parsing.Parse_error -> Printf.printf ".global main\nmain:\nParse error\n"
-  | Lib.Lexer.LexError msg -> Printf.printf ".global main\nmain:\nLexical error: %s\n" msg
-  | e -> Printf.printf ".global main\nmain:\nError: %s\n" (Printexc.to_string e)
+  | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
+  | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
+  | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
