@@ -95,7 +95,7 @@ let parse_file filename =
   | e -> 
     close_in ic;
     let pos = Lexing.lexeme_start_p lexbuf in
-    Printf.eprintf "Error in file %s at line %d, character %d\n" 
+    Printf.printf "Error in file %s at line %d, character %d\n" 
       pos.pos_fname
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
