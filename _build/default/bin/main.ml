@@ -232,4 +232,4 @@ let () =
   with
   | Parsing.Parse_error -> Printf.printf ".global main\nmain:\nli a0, 0\nret\n"
   | Lib.Lexer.LexError _msg -> Printf.printf ".global main\nmain:\nli a0, 0\nret\n"
-  | _e -> Printf.printf ".global main\nmain:\nli a0, 0\nret\n"
+  | e -> Printf.printf "Error: %s\n" (Printexc.to_string e)
