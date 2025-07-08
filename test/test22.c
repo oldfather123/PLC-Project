@@ -20,7 +20,7 @@ int/*Multi-line comment with /*
 */main(// int unused_param,/* /
 /*int another_param*/
    ){
-int x=-1/*-10*/;int y=-/*4*/3;int z=0;
+int x=-1/*-10*/;int y=-/*4*/3;int z;
       if(x>y && /*logical and*/(x-y)/*subtraction*/>1){
     z = factorial /*function call*/ (x) //*division*/factorial(y);
 ;}else
