@@ -107,7 +107,7 @@ let parse_stdin () =
     comp_unit token lexbuf
   with e ->
     let pos = Lexing.lexeme_start_p lexbuf in
-    Printf.eprintf "Error at line %d, character %d\n" 
+    Printf.printf "Error at line %d, character %d\n" 
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
     raise e
