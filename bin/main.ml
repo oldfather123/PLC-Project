@@ -194,9 +194,9 @@ let print_riscv riscv_list =
 let () =
   try
     let ast = 
-      if Array.length Sys.argv > 1 then
+      (* if Array.length Sys.argv > 1 then
         parse_file Sys.argv.(1)
-      else
+      else *)
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
