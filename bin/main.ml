@@ -83,7 +83,7 @@ let print_func_def = function
     Printf.printf "%s\n\n" (print_func_def func_def)
   ) comp_unit *)
 
-(* let parse_file filename =
+let parse_file filename =
   let ic = open_in filename in
   let lexbuf = Lexing.from_channel ic in
   Lexing.set_filename lexbuf filename;
@@ -99,7 +99,7 @@ let print_func_def = function
       pos.pos_fname
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
-    raise e *)
+    raise e
 
 let parse_stdin () =
   let lexbuf = Lexing.from_channel stdin in
@@ -194,9 +194,9 @@ let print_riscv riscv_list =
 let () =
   try
     let ast = 
-      (* if Array.length Sys.argv > 1 then
+      if Array.length Sys.argv > 1 then
         parse_file Sys.argv.(1)
-      else *)
+      else
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
@@ -216,20 +216,17 @@ let () =
 
     (* let (cfg, _blk) = build_cfg tac_list in
     Printf.printf "==Original CFG==\n";
-    print_cfg cfg;
+    print_cfg cfg; *)
 
-    Printf.printf "==Optimized TAC==\n";
-    print_tac (Lib.Ssa_opt.optimize tac_list); *)
+    (* Printf.printf "==Optimized TAC==\n";
+    print_tac (Lib.Ssa_opt.optimize tac_list);
 
+    Printf.printf "==Optimized RISC-V Code==\n"; *)
     let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
     Printf.printf ".global main\n";
     print_riscv (riscv_list);
 
-  (* with
+  with
   | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
   | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
-  | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e) *)
-  with
-  | Parsing.Parse_error -> Printf.printf ".global main\nmain:\nli a0, 0\nret\n"
-  | Lib.Lexer.LexError _msg -> Printf.printf ".global main\nmain:\nli a0, 0\nret\n"
-  | e -> Printf.printf "Error_%s" (Printexc.to_string e)
+  | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)

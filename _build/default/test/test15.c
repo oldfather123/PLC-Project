@@ -12,7 +12,7 @@ int func (int x) {
     else {
         x = x - 2;
     }
-    vfunc(x);
+    //vfunc(x);
     return x;
 }
 int main () {

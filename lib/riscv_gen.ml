@@ -279,6 +279,20 @@ let tac_to_riscv tac_list =
       TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3 && op <> "&&" && op <> "||"->
         (* 优化模式：直接生成beq/bne指令 *)
         let rx = base_var x and ra = base_var a in
+        let rx, rx_insts =
+          if is_number rx then
+            let temp_reg = get_register ("temp" ^ rx) in
+            (temp_reg, [RLi (temp_reg, int_of_string rx)])
+          else
+            (rx, [])
+        in
+        let ra, ra_insts =
+          if is_number ra then
+            let temp_reg = get_register ("temp" ^ ra) in
+            (temp_reg, [RLi (temp_reg, int_of_string ra)])
+          else
+            (ra, [])
+        in
         let instr = match op with
           | "==" -> RBne (rx, ra, label)  (* 生成beq指令 *)
           | "!=" -> RBeq (rx, ra, label)  (* 生成bne指令 *)
@@ -288,9 +302,23 @@ let tac_to_riscv tac_list =
           | ">=" -> RBlt (rx, ra, label)
           | _ -> failwith "Unsupported operation in if-goto"
         in
-        aux ([instr] @ acc) xs
+        aux ([instr] @ ra_insts @ rx_insts @ acc) xs
     | TacBinOp (x, a, op, b) :: xs ->
         let rx = base_var x and ra = base_var a and rb = base_var b in
+        let ra, ra_insts =
+          if is_number ra then
+            let temp_reg = get_register ("temp" ^ ra) in
+            (temp_reg, [RLi (temp_reg, int_of_string ra)])
+          else
+            (ra, [])
+        in
+        let rb, rb_insts =
+          if is_number rb then
+            let temp_reg = get_register ("temp" ^ rb) in
+            (temp_reg, [RLi (temp_reg, int_of_string rb)])
+          else
+            (rb, [])
+        in
         let inst = match op with
           | "+" -> [RAdd (rx, ra, rb)]
           | "-" -> [RSub (rx, ra, rb)]
@@ -307,7 +335,7 @@ let tac_to_riscv tac_list =
           | "||" -> [ROr (rx, ra, rb)]
           | _ -> [RAdd (rx, ra, rb)]
         in
-        aux (inst @ acc) xs
+        aux (inst @ rb_insts @ ra_insts @ acc) xs
     | TacUnOp (x, op, a) :: xs -> 
       let rx = base_var x and ra = base_var a in
         let inst = match op with
@@ -322,7 +350,14 @@ let tac_to_riscv tac_list =
     | TacGoto l :: xs -> aux (RJ l :: acc) xs
     | TacIfGoto (a, l) :: xs ->  
         let ra = base_var a in
-      aux ([RBnez (ra, l)] @ acc) xs
+        let ra, ra_insts =
+          if is_number ra then
+            let temp_reg = get_register ("temp" ^ ra) in
+            (temp_reg, [RLi (temp_reg, int_of_string ra)])
+          else
+            (ra, [])
+        in
+        aux ([RBnez (ra, l)] @ ra_insts @ acc) xs
     | TacParam a :: xs ->
         sp := !sp + 1;  
         let ra = base_var a in
@@ -362,7 +397,14 @@ let tac_to_riscv tac_list =
     | TacReturn (Some a) :: xs -> 
         let ra = base_var a in
         save_function_state ();     (* 保存函数状态 *)
-        aux ([RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ acc) xs
+        let ra, ra_insts =
+          if is_number ra then
+            let temp_reg = get_register ("temp" ^ ra) in
+            (temp_reg, [RLi (temp_reg, int_of_string ra)])
+          else
+            (ra, [])
+        in
+        aux ([RRet (Some (ra)); RPop ("ra", !current_stack_offset); RMv ("a0", ra)] @ ra_insts @ acc) xs
     | TacReturn None :: xs -> aux (RRet None :: RPop ("ra", !current_stack_offset) :: acc) xs
     | TacComment (t, s, a) :: TacLabel l :: xs -> 
       save_function_state ();     (* 保存当前函数状态 *)

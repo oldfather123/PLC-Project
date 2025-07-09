@@ -195,9 +195,9 @@ let () =
   try
     let ast = 
       if Array.length Sys.argv > 1 then
-        parse_file Sys.argv.(1)  (* 从命令行参数获取文件名 *)
+        parse_file Sys.argv.(1)
       else
-        parse_stdin ()          (* 如果没有参数则从标准输入读取 *)
+        parse_stdin () 
     in
     (* print_comp_unit ast; *)
     
@@ -206,24 +206,25 @@ let () =
     print_tac tac_list;
 
     Printf.printf "==Original RISC-V Code==\n"; *)
-    let riscv_list = 
+    (* let riscv_list = 
       match tac_to_riscv tac_list with
       | [] -> [RLabel "main"; RMv ("a0", "0"); RRet None]
       | _ as riscv_list -> riscv_list
     in
     Printf.printf ".global main\n";
-    print_riscv (riscv_list);
+    print_riscv (riscv_list); *)
 
     (* let (cfg, _blk) = build_cfg tac_list in
     Printf.printf "==Original CFG==\n";
-    print_cfg cfg;
+    print_cfg cfg; *)
 
-    Printf.printf "==Optimized TAC==\n";
-    print_tac (Lib.Ssa_opt.optimize tac_list); *)
+    (* Printf.printf "==Optimized TAC==\n";
+    print_tac (Lib.Ssa_opt.optimize tac_list);
 
-    (* let riscv_list = tac_to_riscv Lib.Ssa_opt.optimize tac_list in
+    Printf.printf "==Optimized RISC-V Code==\n"; *)
+    let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
     Printf.printf ".global main\n";
-    print_riscv (riscv_list); *)
+    print_riscv (riscv_list);
 
   (* with
   | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
@@ -232,4 +233,4 @@ let () =
   with
   | Parsing.Parse_error -> Printf.printf ".global main\nmain:\nli a0, 0\nret\n"
   | Lib.Lexer.LexError _msg -> Printf.printf ".global main\nmain:\nli a0, 0\nret\n"
-  | e -> Printf.printf "Error: %s\n" (Printexc.to_string e)
+  | e -> Printf.printf "Error_%s" (Printexc.to_string e)
