@@ -1,213 +1,242 @@
-open Transfer
-open Cfg_gen
+(* SSA优化模块 - 目前只实现常量折叠和复制传播 *)
 
-(* 辅助函数：判断字符串是否为整数 *)
-let is_int s =
-  try ignore (int_of_string s); true with _ -> false
+(* 值表示 *)
+type value =
+  | Const of int
+  | Var of string
+  | Unknown
 
-(* 检测循环结构：返回所有在环上的 block label *)
-let find_loop_blocks cfg =
-  let rec dfs path visited loops l =
-    if List.mem l path then
-      List.iter (fun x -> Hashtbl.replace loops x ()) path
-    else if not (Hashtbl.mem visited l) then (
-      Hashtbl.replace visited l ();
-      let block = Hashtbl.find cfg l in
-      List.iter (dfs (l :: path) visited loops) block.succs
-    )
-  in
-  let loops = Hashtbl.create 16 in
-  let visited = Hashtbl.create 32 in
-  Hashtbl.iter (fun l _ -> dfs [] visited loops l) cfg;
-  loops
+(* 常量表：变量名 -> 值 *)
+module ConstMap = Map.Make(String)
 
-(* 常量折叠和常量传播，跳过循环体 *)
-let const_fold_and_propagate_skip_loops loop_blocks blocks =
-  let env = Hashtbl.create 32 in
-  let eval_binop op a b =
-    let a = int_of_string a in
-    let b = int_of_string b in
-    match op with
-    | "+" -> string_of_int (a + b)
-    | "-" -> string_of_int (a - b)
-    | "*" -> string_of_int (a * b)
-    | "/" -> string_of_int (a / b)
-    | "%" -> string_of_int (a mod b)
-    | "==" -> if a = b then "1" else "0"
-    | "!=" -> if a <> b then "1" else "0"
-    | "<" -> if a < b then "1" else "0"
-    | "<=" -> if a <= b then "1" else "0"
-    | ">" -> if a > b then "1" else "0"
-    | ">=" -> if a >= b then "1" else "0"
-    | "&&" -> if a <> 0 && b <> 0 then "1" else "0"
-    | "||" -> if a <> 0 || b <> 0 then "1" else "0"
-    | _ -> failwith "unsupported binop"
-  in
-  let eval_unop op a =
-    let a = int_of_string a in
-    match op with
-    | "+" -> string_of_int a
-    | "-" -> string_of_int (-a)
-    | "!" -> if a = 0 then "1" else "0"
-    | _ -> failwith "unsupported unop"
-  in
-  let rec replace_var x =
-    if Hashtbl.mem env x then
-      let v = Hashtbl.find env x in
-      if is_int v then v else if v = x then x else replace_var v
-    else x
-  in
-  List.map (fun block ->
-    match block.label with
-    | Some l when Hashtbl.mem loop_blocks l -> block
-    | _ ->
-      let instrs =
-        List.filter_map (fun tac ->
-          match tac with
-          | TacAssign (x, v) when is_int v ->
-              Hashtbl.replace env x v;
-              Some (TacAssign (x, v))
-          | TacAssign (x, y) ->
-              let y' = replace_var y in
-              if is_int y' then (
-                Hashtbl.replace env x y';
-                Some (TacAssign (x, y'))
-              ) else (
-                Hashtbl.remove env x;
-                Some (TacAssign (x, y'))
-              )
-          | TacBinOp (x, a, op, b) ->
-              let a' = replace_var a in
-              let b' = replace_var b in
-              if is_int a' && is_int b' then (
-                let v = eval_binop op a' b' in
-                Hashtbl.replace env x v;
-                Some (TacAssign (x, v))
-              ) else (
-                Hashtbl.remove env x;
-                Some (TacBinOp (x, a', op, b'))
-              )
-          | TacUnOp (x, op, a) ->
-              let a' = replace_var a in
-              if is_int a' then (
-                let v = eval_unop op a' in
-                Hashtbl.replace env x v;
-                Some (TacAssign (x, v))
-              ) else (
-                Hashtbl.remove env x;
-                Some (TacUnOp (x, op, a'))
-              )
-          | TacParam a -> Some (TacParam (replace_var a))
-          | TacCall (x, f, n) -> Hashtbl.remove env x; Some (TacCall (x, f, n))
-          | TacReturn (Some a) -> Some (TacReturn (Some (replace_var a)))
-          | TacIfGoto (a, l) when String.starts_with ~prefix:"if_L" l -> Some (TacIfGoto (replace_var a, l))
-          | TacLabel _ | TacGoto _ | TacReturn None | TacComment _ | TacPhi _ | TacIfGoto _-> Some tac
-        ) block.instrs
-      in { block with instrs }
-  ) blocks
+(* 复制表：变量名 -> 源变量名 *)
+module CopyMap = Map.Make(String)
 
-let copy_propagate_skip_loops loop_blocks blocks =
-  let env = Hashtbl.create 32 in
-  let rec replace_var x =
-    if Hashtbl.mem env x then
-      let v = Hashtbl.find env x in
-      if v = x then x else replace_var v
-    else x
-  in
-  List.map (fun block ->
-    match block.label with
-    | Some l when Hashtbl.mem loop_blocks l -> block
-    | _ ->
-      let instrs =
-        List.filter_map (fun tac ->
-          match tac with
-          | TacAssign (x, y) when not (is_int y) ->
-              let y' = replace_var y in
-              Hashtbl.replace env x y';
-              Some (TacAssign (x, y'))
-          | TacBinOp (x, a, op, b) ->
-              Some (TacBinOp (x, replace_var a, op, replace_var b))
-          | TacUnOp (x, op, a) ->
-              Some (TacUnOp (x, op, replace_var a))
-          | TacParam a -> Some (TacParam (replace_var a))
-          | TacCall (x, f, n) -> Hashtbl.remove env x; Some (TacCall (x, f, n))
-          | TacReturn (Some a) -> Some (TacReturn (Some (replace_var a)))
-          | TacIfGoto (a, l) ->
-              let a' = replace_var a in
-              if is_int a' then
-                if int_of_string a' = 0 then None
-                else Some (TacGoto l)
-              else
-                Some (TacIfGoto (a', l))
-                | _ -> Some (tac)
-        ) block.instrs
-      in { block with instrs }
-  ) blocks
+(* 辅助函数：判断字符串是否为数字 *)
+let is_integer s =
+  try 
+    ignore (int_of_string s); 
+    true 
+  with _ -> false
 
-let dead_code_elimination_skip_loops loop_blocks blocks =
-  let used = Hashtbl.create 32 in
-  let label_used = Hashtbl.create 32 in
-  List.iter (fun block ->
-      List.iter (function
-        | TacAssign (_, v) -> if not (is_int v) then Hashtbl.replace used v ()
-        | TacBinOp (_, a, _, b) ->
-            if not (is_int a) then Hashtbl.replace used a ();
-            if not (is_int b) then Hashtbl.replace used b ()
-        | TacUnOp (_, _, a) -> if not (is_int a) then Hashtbl.replace used a ()
-        | TacParam a -> if not (is_int a) then Hashtbl.replace used a ()
-        | TacCall (x, _, _) -> Hashtbl.replace used x ()
-        | TacReturn (Some a) -> if not (is_int a) then Hashtbl.replace used a ()
-        | TacIfGoto (a, _) -> if not (is_int a) then Hashtbl.replace used a ()
-        | TacGoto l -> Hashtbl.replace label_used l ()
-        | TacPhi (_, a, b) ->
-            if not (is_int a) then Hashtbl.replace used a ();
-            if not (is_int b) then Hashtbl.replace used b ()
-        | _ -> ()
-      ) block.instrs
-  ) blocks;
-    List.flatten (
-    List.map (fun block ->
-      match block.label with
-      | Some l when Hashtbl.mem loop_blocks l ->
-          block.instrs
+(* 常量折叠：对二元运算进行求值 *)
+let fold_binary_op op v1 v2 =
+  match v1, v2 with
+  | Const i1, Const i2 ->
+    (match op with
+    | "+" -> Const (i1 + i2)
+    | "-" -> Const (i1 - i2)
+    | "*" -> Const (i1 * i2)
+    | "/" when i2 <> 0 -> Const (i1 / i2)
+    | "%" when i2 <> 0 -> Const (i1 mod i2)
+    | "==" -> Const (if i1 = i2 then 1 else 0)
+    | "!=" -> Const (if i1 <> i2 then 1 else 0)
+    | "<" -> Const (if i1 < i2 then 1 else 0)
+    | "<=" -> Const (if i1 <= i2 then 1 else 0)
+    | ">" -> Const (if i1 > i2 then 1 else 0)
+    | ">=" -> Const (if i1 >= i2 then 1 else 0)
+    | "&&" -> Const (if i1 <> 0 && i2 <> 0 then 1 else 0)
+    | "||" -> Const (if i1 <> 0 || i2 <> 0 then 1 else 0)
+    | _ -> Unknown)
+  | _ -> Unknown
+
+(* 常量折叠：对一元运算进行求值 *)
+let fold_unary_op op v =
+  match v with
+  | Const i ->
+    (match op with
+    | "+" -> Const i
+    | "-" -> Const (-i)
+    | "!" -> Const (if i = 0 then 1 else 0)
+    | _ -> Unknown)
+  | _ -> Unknown
+
+(* 获取值 - 不进行递归查找，避免跨基本块的错误传播 *)
+let get_value const_map _copy_map var =
+  if is_integer var then
+    Const (int_of_string var)
+  else
+    (* TODO:只检查直接的常量映射，不进行复制链追踪 *)
+    try
+      Const (ConstMap.find var const_map)
+    with Not_found -> Var var
+
+(* 单条指令的常量折叠和复制传播 *)
+let optimize_tac_instruction const_map copy_map instr =
+  match instr with
+  | Transfer.TacAssign (dest, src) ->
+    (* 处理赋值指令 *)
+    if is_integer src then
+      (* 源是常量，记录到常量表 *)
+      let new_const_map = ConstMap.add dest (int_of_string src) const_map in
+      let new_copy_map = CopyMap.remove dest copy_map in
+      (new_const_map, new_copy_map, [Transfer.TacAssign (dest, src)])
+    else
+      (* 源是变量，检查是否可以进行常量传播 *)
+      let value = get_value const_map copy_map src in
+      (match value with
+      | Const c ->
+        let const_str = string_of_int c in
+        let new_const_map = ConstMap.add dest c const_map in
+        let new_copy_map = CopyMap.remove dest copy_map in
+        (new_const_map, new_copy_map, [Transfer.TacAssign (dest, const_str)])
+      | Var _ ->
+        (* 绝对安全：不进行复制传播，不记录复制关系但不替换 *)
+        (* TODO：更加激进的策略 *)
+        let new_const_map = ConstMap.remove dest const_map in
+        let new_copy_map = CopyMap.remove dest copy_map in
+        (new_const_map, new_copy_map, [instr])
       | _ ->
-          List.filter (function
-            | TacAssign (x, _) -> Hashtbl.mem used x
-            | _ -> true
-          ) block.instrs
-    ) blocks
-  )
+        let new_const_map = ConstMap.remove dest const_map in
+        let new_copy_map = CopyMap.remove dest copy_map in
+        (new_const_map, new_copy_map, [instr]))
 
-(* 基于CFG的不可达代码消除 *)
-let unreachable_code_elimination_by_cfg tac_list =
-  let (cfg, blk) = build_cfg tac_list in
-  let entry_label = "main" in
-  let visited = Hashtbl.create 32 in
-  let rec visit l =
-    if not (Hashtbl.mem visited l) then (
-      Hashtbl.replace visited l ();
-      let block = Hashtbl.find cfg l in
-      List.iter visit block.succs
-    )
-  in
-  visit entry_label;
-  let reachable_blocks =
-    List.filter (fun block ->
-      match block.label with
-      | Some l -> Hashtbl.mem visited l
-      | None -> true
-    ) blk
-  in
-  List.flatten (List.map (fun block -> block.instrs) reachable_blocks)
+  | Transfer.TacBinOp (dest, src1, op, src2) ->
+    (* 处理二元运算指令 *)
+    let v1 = get_value const_map copy_map src1 in
+    let v2 = get_value const_map copy_map src2 in
+    let folded = fold_binary_op op v1 v2 in
+    (match folded with
+    | Const c ->
+      (* 可以常量折叠 *)
+      let const_str = string_of_int c in
+      let new_const_map = ConstMap.add dest c const_map in
+      let new_copy_map = CopyMap.remove dest copy_map in
+      (new_const_map, new_copy_map, [Transfer.TacAssign (dest, const_str)])
+    | _ ->
+      (* 不能常量折叠，但可以用常量替换操作数 *)
+      let new_src1 = (match v1 with
+        | Const c -> string_of_int c
+        | _ -> src1) in
+      let new_src2 = (match v2 with
+        | Const c -> string_of_int c
+        | _ -> src2) in
+      let new_const_map = ConstMap.remove dest const_map in
+      let new_copy_map = CopyMap.remove dest copy_map in
+      let optimized_instr = 
+        if new_src1 <> src1 || new_src2 <> src2 then
+          Transfer.TacBinOp (dest, new_src1, op, new_src2)
+        else
+          instr
+      in
+      (new_const_map, new_copy_map, [optimized_instr]))
 
-(* 综合优化流程：对while循环体不做任何优化 *)
-let optimize tac_list =
-  let (cfg, blk) = build_cfg tac_list in
-  let loop_blocks = find_loop_blocks cfg in
-  let blocks =
-    blk
-    |> (const_fold_and_propagate_skip_loops loop_blocks)
-    |> (copy_propagate_skip_loops loop_blocks)
-    |> (dead_code_elimination_skip_loops loop_blocks)
+  | Transfer.TacUnOp (dest, op, src) ->
+    (* 处理一元运算指令 *)
+    let v = get_value const_map copy_map src in
+    let folded = fold_unary_op op v in
+    (match folded with
+    | Const c ->
+      (* 可以常量折叠 *)
+      let const_str = string_of_int c in
+      let new_const_map = ConstMap.add dest c const_map in
+      let new_copy_map = CopyMap.remove dest copy_map in
+      (new_const_map, new_copy_map, [Transfer.TacAssign (dest, const_str)])
+    | _ ->
+      (* 不能常量折叠，保持原指令 *)
+    let new_const_map = ConstMap.remove dest const_map in
+    let new_copy_map = CopyMap.remove dest copy_map in
+    (new_const_map, new_copy_map, [instr]))
+
+  | Transfer.TacIfGoto (cond, label) ->
+    (* 处理条件跳转指令 - 清空状态，因为控制流分叉 *)
+    let v = get_value const_map copy_map cond in
+    let new_cond = (match v with
+      | Const c -> string_of_int c
+      | _ -> cond) in
+    let optimized_instr = 
+      if new_cond <> cond then
+        Transfer.TacIfGoto (new_cond, label)
+      else
+        instr
+    in
+    (* 控制流指令后清空常量和复制信息 *)
+    (ConstMap.empty, CopyMap.empty, [optimized_instr])
+
+  | Transfer.TacParam src ->
+    (* 处理参数指令 *)
+    let v = get_value const_map copy_map src in
+    let new_src = (match v with
+      | Const c -> string_of_int c
+      | _ -> src) in
+    let optimized_instr = 
+      if new_src <> src then
+        Transfer.TacParam new_src
+      else
+        instr
+    in
+    (const_map, copy_map, [optimized_instr])
+
+  | Transfer.TacReturn (Some src) ->
+    (* 处理返回指令 *)
+    let v = get_value const_map copy_map src in
+    let new_src = (match v with
+      | Const c -> string_of_int c
+      | _ -> src) in
+    let optimized_instr = 
+      if new_src <> src then
+        Transfer.TacReturn (Some new_src)
+      else
+        instr
+    in
+    (const_map, copy_map, [optimized_instr])
+
+  | Transfer.TacLabel _ | Transfer.TacGoto _ ->
+    (* 标签和跳转指令清空状态 *)
+    (ConstMap.empty, CopyMap.empty, [instr])
+
+  | _ ->
+    (* 其他指令不做优化 *)
+    (const_map, copy_map, [instr])
+
+(* 对TAC指令列表进行保守的常量折叠优化 *)
+let optimize_constant_folding tac_list =
+  let rec optimize_loop tac_list const_map copy_map acc =
+    match tac_list with
+    | [] -> List.rev acc
+    | instr :: rest ->
+      let (new_const_map, new_copy_map, optimized_instrs) = 
+        optimize_tac_instruction const_map copy_map instr in
+      optimize_loop rest new_const_map new_copy_map (List.rev_append optimized_instrs acc)
   in
-  unreachable_code_elimination_by_cfg blocks
+  optimize_loop tac_list ConstMap.empty CopyMap.empty []
+
+(* 检查变量是否被后续指令使用 *)
+let is_variable_used var remaining_instrs =
+  List.exists (fun instr ->
+    match instr with
+    | Transfer.TacAssign (_, src) when src = var -> true
+    | Transfer.TacBinOp (_, src1, _, src2) when src1 = var || src2 = var -> true
+    | Transfer.TacUnOp (_, _, src) when src = var -> true
+    | Transfer.TacIfGoto (cond, _) when cond = var -> true
+    | Transfer.TacParam src when src = var -> true
+    | Transfer.TacReturn (Some src) when src = var -> true
+    | Transfer.TacPhi (_, src1, src2) when src1 = var || src2 = var -> true
+    | _ -> false
+  ) remaining_instrs
+
+(* 死代码消除 - 移除未使用的临时变量赋值 *)
+let eliminate_dead_code tac_list =
+  let rec eliminate_loop tac_list acc =
+    match tac_list with
+    | [] -> List.rev acc
+    | instr :: rest ->
+      (match instr with
+      | Transfer.TacAssign (dest, _) when String.contains dest 't' && dest.[0] = 't' ->
+        (* 检查临时变量是否被后续使用 *)
+        if is_variable_used dest rest then
+          eliminate_loop rest (instr :: acc)
+        else
+          eliminate_loop rest acc  (* 删除未使用的临时变量赋值 *)
+      | _ ->
+        eliminate_loop rest (instr :: acc))
+  in
+  eliminate_loop tac_list []
+
+(* 主要的优化函数 *)
+let optimize (tac_list : Transfer.tac list) : Transfer.tac list =
+  (* 1. 常量折叠 *)
+  let folded = optimize_constant_folding tac_list in
+  (* 2. 死代码消除 *)
+  let optimized = eliminate_dead_code folded in
+  optimized
