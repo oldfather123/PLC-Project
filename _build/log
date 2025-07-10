@@ -13,4 +13,4 @@
 #  ; build_dir = In_build_dir "default"
 #  ; instrument_with = []
 #  }
-$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_6de426_output
+$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_bf39c9_output

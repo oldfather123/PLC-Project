@@ -206,13 +206,13 @@ let () =
     print_tac tac_list;
 
     Printf.printf "==Original RISC-V Code==\n"; *)
-    let riscv_list = 
+    (* let riscv_list = 
       match tac_to_riscv tac_list with
       | [] -> [RLabel "main"; RMv ("a0", "0"); RRet None]
       | _ as riscv_list -> riscv_list
     in
     Printf.printf ".global main\n";
-    print_riscv (riscv_list);
+    print_riscv (riscv_list); *)
 
     (* let (cfg, _blk) = build_cfg tac_list in
     Printf.printf "==Original CFG==\n";
@@ -222,9 +222,9 @@ let () =
     print_tac (Lib.Ssa_opt.optimize tac_list);
 
     Printf.printf "==Optimized RISC-V Code==\n"; *)
-    (* let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
+    let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
     Printf.printf ".global main\n";
-    print_riscv (riscv_list); *)
+    print_riscv (riscv_list);
 
   with
   | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
