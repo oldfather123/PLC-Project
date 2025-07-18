@@ -8,7 +8,7 @@ type tac =
   | TacGoto of string
   | TacIfGoto of string * string
   | TacParam of string
-  | TacCall of string * string * int
+  | TacCall of string * string * int * string list
   | TacReturn of string option
   | TacComment of string * string * identifier list
   | TacPhi of string * string * string
@@ -135,7 +135,7 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
       let arg_temps = List.map (fun a -> gen_expr a env code) args in
       List.iter (fun t -> code := !code @ [TacParam t]) (List.rev arg_temps);
       let t = new_temp () in
-      code := !code @ [TacCall (t, fname, List.length args)];
+      code := !code @ [TacCall (t, fname, List.length args, arg_temps)];
       t
 
 let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac list ref) : unit =
@@ -316,7 +316,7 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
     match !scope_stack with
     | current::_ -> 
         Hashtbl.add current id ssa_id;  (* 添加到当前作用域 *)
-        id ^ "_Control"
+        id ^ "_Control_0_" ^ name 
     | [] -> failwith "No active scope"
   ) params in
 

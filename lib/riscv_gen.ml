@@ -363,7 +363,7 @@ let tac_to_riscv tac_list =
         let ra = base_var a in
         param_stack := !param_stack @ [ra];
         aux acc xs
-    | TacCall (x, f, _n) :: xs ->
+    | TacCall (x, f, _n, _a) :: xs ->
         let rx = base_var x in
         (* 保存所有正在使用的寄存器到栈中 *)
         save_function_state ();     (* 保存调用者状态 *)

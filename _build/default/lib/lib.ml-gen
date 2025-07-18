@@ -21,6 +21,9 @@ module Parser = Lib__Parser
 (** @canonical Lib.Riscv_gen *)
 module Riscv_gen = Lib__Riscv_gen
 
+(** @canonical Lib.Riscv_gen_new *)
+module Riscv_gen_new = Lib__Riscv_gen_new
+
 (** @canonical Lib.Ssa_opt *)
 module Ssa_opt = Lib__Ssa_opt
 

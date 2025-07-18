@@ -3,6 +3,8 @@ int add(int a, int b) {
 }
 
 int main() {
-    int x = add(0, 0);
+    int a = 1;
+    int b = 2;
+    int x = add(a, b);
     return x;
 }

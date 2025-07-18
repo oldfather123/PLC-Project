@@ -54,7 +54,7 @@ let build_cfg tac_list =
             (match get_next_label rest with
             | Some next_l when next_l <> l -> block.succs <- [l; next_l]
             | _ -> block.succs <- [l])
-        | TacCall (_, fname, _) :: _ ->
+        | TacCall (_, fname, _, _) :: _ ->
             (* 跳转到被调用函数的入口label和顺序后继 *)
             (match get_next_label rest with
             | Some next_l when next_l <> fname -> block.succs <- [fname; next_l]

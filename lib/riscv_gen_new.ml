@@ -1,0 +1,221 @@
+open Transfer
+
+(* RISC-V 指令类型 *)
+type riscv_inst =
+  | RLabel of string
+  | RLi of string * int
+  | RMv of string * string
+  | RAdd of string * string * string
+  | RSub of string * string * string
+  | RMul of string * string * string
+  | RAddi of string * string * int
+  | RSw of string * int * string
+  | RLw of string * int * string
+  | RCall of string
+  | RJ of string
+  | RBne of string * string * string
+  | RRet
+
+(* 函数信息记录 *)
+type func_info = {
+  mutable param_count: int;          (* 参数个数 *)
+  mutable var_count: int;           (* 局部变量个数 *)
+  mutable stack_size: int;          (* 栈空间大小 *)
+  var_offsets: (string, int) Hashtbl.t;  (* 变量在栈中的偏移 *)
+  stored_vars: (string, bool) Hashtbl.t; (* 记录变量是否已存储到栈 *)
+}
+
+(* 计算对齐到16字节的栈大小 *)
+let align_stack size =
+  (size + 15) land (lnot 15)
+
+(* 扫描函数信息 *)
+let scan_functions tac_list =
+  let func_table = Hashtbl.create 32 in
+  let current_func = ref "" in
+  let current_info = ref None in
+  
+  let init_func_info name param_names =
+    let info = {
+      param_count = List.length param_names;
+      var_count = 0;
+      stack_size = 8;  (* ra 和 s0 需要 8 字节 *)
+      var_offsets = Hashtbl.create 32;
+      stored_vars = Hashtbl.create 32;
+    } in
+    (* 为参数分配栈空间 *)
+    List.iteri (fun _i param_name ->
+        info.stack_size <- info.stack_size + 4;  (* 先更新栈空间大小 *)
+        let offset = -info.stack_size in         (* 再计算偏移值 *)
+        Hashtbl.add info.var_offsets param_name offset;
+      Printf.printf "alloc space for param %s at offset %d\n" param_name offset;
+    ) param_names;
+    Hashtbl.add func_table name info;
+    current_func := name;
+    current_info := Some info
+  in
+
+  let add_var_if_new var =
+    match !current_info with
+    | Some info when not (Hashtbl.mem info.var_offsets var) ->
+          info.var_count <- info.var_count + 1;
+          info.stack_size <- info.stack_size + 4;
+          let offset = -info.stack_size in
+          Hashtbl.add info.var_offsets var offset;
+          Printf.printf "alloc space for variable %s\n" var;
+    | _ -> ()
+  in
+
+  List.iter (fun tac ->
+    match tac with
+    | TacComment (_, comment_str, param_names) ->
+        if String.length comment_str > 9 && String.sub comment_str 0 9 = "function " then
+          let name = String.sub comment_str 9 (String.length comment_str - 9) in
+          init_func_info name param_names
+    | TacBinOp (dest, src1, _, src2) ->
+        add_var_if_new dest;
+        add_var_if_new src1;
+        add_var_if_new src2
+    | TacAssign (dest, _) ->
+        add_var_if_new dest
+    | TacCall (dest, _, _, _) ->
+        add_var_if_new dest
+    | _ -> ()
+  ) tac_list;
+
+  (* 对齐每个函数的栈空间 *)
+  Hashtbl.iter (fun _ info ->
+    info.stack_size <- align_stack info.stack_size
+  ) func_table;
+  
+  func_table
+
+(* 生成 RISC-V 代码 *)
+let tac_to_riscv tac_list =
+  let func_table = scan_functions tac_list in
+  let riscv_code = ref [] in
+  let current_func = ref "" in
+  let current_info = ref None in
+
+  (* 生成函数序言 *)
+  let emit_prologue name param_names =
+    let info = Hashtbl.find func_table name in
+    current_func := name;
+    current_info := Some info;
+    riscv_code := !riscv_code @ [
+      RAddi ("sp", "sp", -info.stack_size);
+      RSw ("ra", info.stack_size - 4, "sp");
+      RSw ("s0", info.stack_size - 8, "sp");
+      RAddi ("s0", "sp", info.stack_size)
+    ];
+    List.iteri (fun i param_name ->
+    if i < info.param_count then
+      let offset = Hashtbl.find info.var_offsets param_name in
+      riscv_code := !riscv_code @ [
+        RSw (Printf.sprintf "a%d" i, offset, "s0")
+      ];
+      Printf.printf "%s at offset %d\n" param_name offset;
+  ) param_names;
+  in
+
+  (* 获取变量在栈中的位置 *)
+  let get_var_offset var =
+    match !current_info with
+    | Some info ->
+        (try Hashtbl.find info.var_offsets var
+         with Not_found -> failwith ("Variable not found: " ^ var))
+    | None -> failwith "No active function"
+  in
+
+  List.iter (fun tac ->
+    match tac with
+    | TacComment (_, comment_str, param_names) ->
+    (* 使用字符串匹配提取函数名 *)
+    if String.length comment_str > 9 && String.sub comment_str 0 9 = "function " then
+      let name = String.sub comment_str 9 (String.length comment_str - 9) in
+      riscv_code := !riscv_code @ [RLabel name];
+        emit_prologue name param_names
+    | TacAssign (dest, src) ->
+    let dest_offset = get_var_offset dest in
+    (try
+      let value = int_of_string src in
+      (* 如果是常量赋值，直接加载到寄存器并存储到栈中 *)
+      riscv_code := !riscv_code @ [
+        RLi ("a0", value);  (* 将常量加载到寄存器 a0 *)
+        RSw ("a0", dest_offset, "s0")  (* 将寄存器 a0 的值存储到栈中 *)
+      ];
+      (* 标记变量已经存储到栈中 *)
+      (match !current_info with
+       | Some info -> Hashtbl.add info.stored_vars dest true
+       | None -> failwith "No active function")
+    with Failure _ ->
+      (* 如果是变量赋值，检查是否需要重新加载 *)
+      let src_offset = get_var_offset src in
+      (match !current_info with
+       | Some info ->
+           if not (Hashtbl.mem info.stored_vars dest) then begin
+             riscv_code := !riscv_code @ [
+               RLw ("a0", src_offset, "s0");  (* 从栈中加载 src 的值到寄存器 a0 *)
+               RSw ("a0", dest_offset, "s0")  (* 将寄存器 a0 的值存储到 dest 的栈位置 *)
+             ];
+             Hashtbl.add info.stored_vars dest true
+           end
+       | None -> failwith "No active function"))
+
+    | TacBinOp (dest, src1, op, src2) ->
+        let dest_offset = get_var_offset dest in
+        let src1_offset = get_var_offset src1 in
+        let src2_offset = get_var_offset src2 in
+        let instr = match op with
+          | "+" -> (fun rd rs1 rs2 -> RAdd (rd, rs1, rs2))
+          | "-" -> (fun rd rs1 rs2 -> RSub (rd, rs1, rs2))
+          | "*" -> (fun rd rs1 rs2 -> RMul (rd, rs1, rs2))
+          | _ -> failwith "Unsupported operation"
+        in
+        riscv_code := !riscv_code @ [
+          RLw ("a0", src1_offset, "s0");
+          RLw ("a1", src2_offset, "s0");
+          instr "a2" "a0" "a1";
+          RSw ("a2", dest_offset, "s0")
+        ]
+
+    | TacCall (dest, func_name, _, args) ->
+        (* 准备参数 *)
+        List.iteri (fun i arg ->
+          let arg_offset = get_var_offset arg in
+          if i < 8 then
+            riscv_code := !riscv_code @ [
+              RLw (Printf.sprintf "a%d" i, arg_offset, "s0")
+            ]
+          else
+            (* 超过8个参数的情况需要通过栈传递 *)
+            riscv_code := !riscv_code @ [
+              RLw ("a0", arg_offset, "s0");
+              RSw ("a0", (i - 8) * 4, "sp")
+            ]
+        ) args;
+        
+        (* 调用函数 *)
+        riscv_code := !riscv_code @ [RCall func_name];
+        
+        (* 保存返回值 *)
+        let dest_offset = get_var_offset dest in
+        riscv_code := !riscv_code @ [
+          RSw ("a0", dest_offset, "s0")
+        ]
+
+    | TacReturn (Some var) ->
+        let offset = get_var_offset var in
+        (match !current_info with
+        | Some info ->
+            riscv_code := !riscv_code @ [
+              RLw ("a0", offset, "s0");
+              RLw ("ra", info.stack_size - 4, "sp");
+              RLw ("s0", info.stack_size - 8, "sp");
+              RAddi ("sp", "sp", info.stack_size);
+              RRet
+            ]
+        | None -> failwith "No active function for return")
+    | _ -> ()
+  ) tac_list;
+  !riscv_code
