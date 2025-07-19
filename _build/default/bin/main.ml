@@ -131,7 +131,7 @@ let parse_stdin () =
        | _ -> Printf.printf "Program returned a function\n")
   | exception _ -> Printf.eprintf "No 'main' function found\n" *)
 
-(* let string_of_tac = function
+let string_of_tac = function
   | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
   | TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
   | TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
@@ -146,7 +146,7 @@ let parse_stdin () =
   | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
 let print_tac tac_list =
-  List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list *)
+  List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list
 
 let print_riscv_inst = function
   | RAdd (rd, rs1, rs2) -> Printf.printf "add %s, %s, %s\n" rd rs1 rs2
@@ -157,11 +157,11 @@ let print_riscv_inst = function
   | RSlt (rd, rs1, rs2) -> Printf.printf "slt %s, %s, %s\n" rd rs1 rs2
   | RSgt (rd, rs1, rs2) -> Printf.printf "sgt %s, %s, %s\n" rd rs1 rs2
   | RXori (rd, rs, imm) -> Printf.printf "xori %s, %s, %d\n" rd rs imm
-  (* | RSeqz (rd, rs) -> Printf.printf "seqz %s, %s\n" rd rs *)
   | RAddi (rd, rs1, imm) -> Printf.printf "addi %s, %s, %d\n" rd rs1 imm
   | RAnd (rd, rs1, rs2) -> Printf.printf "and %s, %s, %s\n" rd rs1 rs2
   | ROr (rd, rs1, rs2) -> Printf.printf "or %s, %s, %s\n" rd rs1 rs2
-  (* | RNeg (rd, rs) -> Printf.printf "neg %s, %s\n" rd rs *)
+  | RSeqz (rd, rs) -> Printf.printf "seqz %s, %s\n" rd rs
+  | RNeg (rd, rs) -> Printf.printf "neg %s, %s\n" rd rs
   | RMv (rd, rs) -> Printf.printf "mv %s, %s\n" rd rs
   | RLi (rd, imm) -> Printf.printf "li %s, %d\n" rd imm
   | RLabel l -> Printf.printf "%s:\n" l
@@ -180,7 +180,6 @@ let print_riscv_inst = function
   | RBle (r1, r2, label) -> Printf.printf "ble %s, %s, %s\n" r1 r2 label
   | RBgt (r1, r2, label) -> Printf.printf "bgt %s, %s, %s\n" r1 r2 label
   | RBge (r1, r2, label) -> Printf.printf "bge %s, %s, %s\n" r1 r2 label *)
-  (*  *)
 
 let print_riscv riscv_list =
   List.iter print_riscv_inst riscv_list
@@ -203,10 +202,10 @@ let () =
     (* print_comp_unit ast; *)
     
     let tac_list = gen_comp_unit ast in
-    (* Printf.printf "==Original TAC==\n";
+    Printf.printf "==Original TAC==\n";
     print_tac tac_list;
 
-    Printf.printf "==Original RISC-V Code==\n"; *)
+    Printf.printf "==Original RISC-V Code==\n";
     let riscv_list = tac_to_riscv tac_list in
     Printf.printf ".global main\n";
     print_riscv (riscv_list);

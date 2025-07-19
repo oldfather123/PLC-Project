@@ -15,6 +15,8 @@ type riscv_inst =
   | RXori of string * string * int
   | RAnd of string * string * string
   | ROr of string * string * string
+  | RSeqz of string * string
+  | RNeg of string * string
   | RAddi of string * string * int
   | RSw of string * int * string
   | RLw of string * int * string
@@ -83,6 +85,9 @@ let scan_functions tac_list =
         add_var_if_new dest;
         add_var_if_new src1;
         add_var_if_new src2
+    | TacUnOp (dest, _, src) ->
+        add_var_if_new dest;
+        add_var_if_new src
     | TacAssign (dest, _) ->
         add_var_if_new dest
     | TacCall (dest, _, _, _) ->
@@ -192,6 +197,20 @@ let tac_to_riscv tac_list =
           RLw ("a1", src2_offset, "s0")] @
           instr "a2" "a0" "a1" @
           [RSw ("a2", dest_offset, "s0")]
+    
+    | TacUnOp (dest, op, src) ->
+      let dest_offset = get_var_offset dest in
+      let src_offset = get_var_offset src in
+      let instr = match op with
+        | "!" -> [RSeqz ("a0", "a1")]  (* 非操作：将 src 的值取反 *)
+        | "-" -> [RNeg ("a0", "a1")]  (* 负号操作：将 src 的值取负 *)
+        | _ -> failwith ("Unsupported unary operation: " ^ op)
+      in
+      riscv_code := !riscv_code @ [
+        RLw ("a1", src_offset, "s0")  (* 从栈中加载 src 的值到寄存器 a1 *)
+      ] @ instr @ [
+        RSw ("a0", dest_offset, "s0")  (* 将结果存储到 dest 的栈位置 *)
+      ];
 
     | TacCall (dest, func_name, _, args) ->
         (* 准备参数 *)
