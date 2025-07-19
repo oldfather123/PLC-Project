@@ -17,6 +17,7 @@ type riscv_inst =
   | ROr of string * string * string
   | RSeqz of string * string
   | RNeg of string * string
+  | RBnez of string * string
   | RAddi of string * string * int
   | RSw of string * int * string
   | RLw of string * int * string
@@ -243,6 +244,14 @@ let tac_to_riscv tac_list =
                            String.starts_with ~prefix:"while_" l-> process_tac ([RLabel l] @ acc) xs
       
     | TacGoto l :: xs -> process_tac ([RJ l] @ acc) xs
+
+    | TacIfGoto (cond, label) :: xs ->
+    let cond_offset = get_var_offset cond in
+    process_tac (
+      [RBnez ("a0", label);            (* 如果条件为真，跳转到指定标签 *)
+        RLw ("a0", cond_offset, "s0")  (* 从栈中加载条件变量的值到寄存器 a0 *) 
+      ] @ acc
+    ) xs
 
     | TacCall (dest, func_name, _, args) :: xs ->
     (* 准备参数 *)

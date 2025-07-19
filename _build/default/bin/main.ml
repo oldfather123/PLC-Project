@@ -166,8 +166,8 @@ let print_riscv_inst = function
   | RLi (rd, imm) -> Printf.printf "li %s, %d\n" rd imm
   | RLabel l -> Printf.printf "%s:\n" l
   | RJ l -> Printf.printf "j %s\n" l
-  (* | RBnez (rs, l) -> Printf.printf "bnez %s, %s\n" rs l
-  | RPush (v, _) -> Printf.printf "addi sp, sp, -4\n"; Printf.printf "sw %s, 0(sp)\n" v
+  | RBnez (rs, l) -> Printf.printf "bnez %s, %s\n" rs l
+  (* | RPush (v, _) -> Printf.printf "addi sp, sp, -4\n"; Printf.printf "sw %s, 0(sp)\n" v
   | RPop (v, _) -> Printf.printf "lw %s, 0(sp)\n" v ; Printf.printf "addi sp, sp, 4\n" *)
   | RCall f -> Printf.printf "call %s\n" f
   | RSw (rs, offset, base) -> Printf.printf "sw %s, %d(%s)\n" rs offset base

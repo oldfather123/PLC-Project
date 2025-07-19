@@ -196,21 +196,21 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
     (match else_s_opt with
       | Some else_s ->
          let l_else = if_new_label () in
-         let l_end = if_new_label () in
+         (* let l_end = if_new_label () in *)
          code := !code @ [TacIfGoto (cond_not_t, l_else)];
          let l_then = then_new_label () in
           code := !code @ [TacLabel l_then];
          let env_then = Hashtbl.copy env in
          let code_then = ref [] in
          gen_stmt then_s env_then code_then;
-         code_then := !code_then @ [TacGoto l_end];
+         (* code_then := !code_then @ [TacGoto l_end]; *)
          (* Hashtbl.iter (fun k v -> Hashtbl.replace env k v) env_then; *)
          let env_else = Hashtbl.copy env in
          let code_else = ref [] in
          code_else := !code_else @ [TacLabel l_else];
          gen_stmt else_s env_else code_else;
          code := !code @ !code_then @ !code_else;
-         code := !code @ [TacLabel l_end];
+         (* code := !code @ [TacLabel l_end]; *)
           let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_then [] in
           let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_else vars in
           List.iter (fun var_name ->
