@@ -37,7 +37,7 @@ call add
 sw a0, -28(s0)
 lw a0, -28(s0)
 sw a0, -32(s0)
-lw a0, -32(s0)
+lw a0, -16(s0)
 lw ra, 28(sp)
 lw s0, 24(sp)
 addi sp, sp, 32
