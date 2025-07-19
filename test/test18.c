@@ -1,16 +1,13 @@
-int abs(int x)
+int factorial(int n)
 {
-    if (x < 0)
+    if (n <= 1)
     {
-        return -x;
+        return 1;
     }
-    else
-    {
-        return x;
-    }
+    return n * factorial(n - 1);
 }
 int main () {
-    int x = -1;
-    int z = abs(x);
+    int x = 5;
+    int z = factorial(x);
     return z;
 }

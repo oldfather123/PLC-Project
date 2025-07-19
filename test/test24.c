@@ -1,9 +1,23 @@
-int main() {
-    int a = 0;
-    int b = 1;
-    if (a && (b / a)) {
-        return 1;
-    } else {
-        return 0;
-    }
+int factorial(int n){
+      int result=1;
+      if(n<=0){ return 1;
+      }else{
+         while(n>1){result=result*n;n=n-1;}return result;
+      }
+}
+
+int main(){
+int x=-1;int y=-3;int z=0;
+      if(x>y && (x-y)>1){
+    z = factorial(x) / factorial(y);
+;}else
+if (x < y || x == y) {z=factorial(-(x+y));
+      }else{z = factorial(x * y);
+}
+      while(z>100){
+        if(z%2==0){z=z/2;
+        }else{z=z-1;
+        }
+      }
+      return z % 8 / factorial(3);
 }
