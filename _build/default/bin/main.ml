@@ -174,12 +174,12 @@ let print_riscv_inst = function
   | RLw (rd, offset, base) -> Printf.printf "lw %s, %d(%s)\n" rd offset base
   | RRet -> Printf.printf "ret\n"
   (* | RComment (_, s, _) -> Printf.printf "# %s\n" s *)
-  (* | RBeq (r1, r2, label) -> Printf.printf "beq %s, %s, %s\n" r1 r2 label *)
+  | RBeq (r1, r2, label) -> Printf.printf "beq %s, %s, %s\n" r1 r2 label
   | RBne (r1, r2, label) -> Printf.printf "bne %s, %s, %s\n" r1 r2 label
-  (* | RBlt (r1, r2, label) -> Printf.printf "blt %s, %s, %s\n" r1 r2 label
+  | RBlt (r1, r2, label) -> Printf.printf "blt %s, %s, %s\n" r1 r2 label
   | RBle (r1, r2, label) -> Printf.printf "ble %s, %s, %s\n" r1 r2 label
   | RBgt (r1, r2, label) -> Printf.printf "bgt %s, %s, %s\n" r1 r2 label
-  | RBge (r1, r2, label) -> Printf.printf "bge %s, %s, %s\n" r1 r2 label *)
+  | RBge (r1, r2, label) -> Printf.printf "bge %s, %s, %s\n" r1 r2 label
 
 let print_riscv riscv_list =
   List.iter print_riscv_inst riscv_list

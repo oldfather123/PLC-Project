@@ -23,6 +23,11 @@ type riscv_inst =
   | RCall of string
   | RJ of string
   | RBne of string * string * string
+  | RBeq of string * string * string
+  | RBge of string * string * string
+  | RBgt of string * string * string
+  | RBle of string * string * string
+  | RBlt of string * string * string
   | RRet
 
 (* 函数信息记录 *)
@@ -178,6 +183,26 @@ let tac_to_riscv tac_list =
         ] @ acc) xs
         )
 
+    | TacBinOp (x1, x, op, a) :: TacUnOp (x3, "!", x2) :: TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3 && op <> "&&" && op <> "||" ->
+        (* 优化模式：直接生成 beq/bne 指令 *)
+        let src1_offset = get_var_offset x in
+        let src2_offset = get_var_offset a in
+        let instr = match op with
+          | "==" -> [RBne ("a0", "a1", label)]  (* 生成 RBne 指令 *)
+          | "!=" -> [RBeq ("a0", "a1", label)]  (* 生成 RBeq 指令 *)
+          | "<" -> [RBge ("a0", "a1", label)]  (* 生成 RBge 指令 *)
+          | "<=" -> [RBgt ("a0", "a1", label)]  (* 生成 RBgt 指令 *)
+          | ">" -> [RBle ("a0", "a1", label)]  (* 生成 RBle 指令 *)
+          | ">=" -> [RBlt ("a0", "a1", label)]  (* 生成 RBlt 指令 *)
+          | _ -> failwith "Unsupported operation in if-goto"
+        in
+        process_tac (
+          instr @ [
+            RLw ("a0", src1_offset, "s0");  (* 加载 x 的值到寄存器 a0 *)
+            RLw ("a1", src2_offset, "s0")   (* 加载 a 的值到寄存器 a1 *)
+          ] @ acc
+        ) xs
+
     | TacBinOp (dest, src1, op, src2) :: xs ->
         let dest_offset = get_var_offset dest in
         let src1_offset = get_var_offset src1 in
@@ -198,7 +223,7 @@ let tac_to_riscv tac_list =
         in
         process_tac (
           [RSw ("a2", dest_offset, "s0")] @
-          instr "a2" "a0" "a1" @  
+          instr "a2" "a1" "a0" @  
           [RLw ("a1", src1_offset, "s0");
           RLw ("a0", src2_offset, "s0")] @ acc) xs
     
@@ -212,6 +237,12 @@ let tac_to_riscv tac_list =
       in
       process_tac (
         [RSw ("a0", dest_offset, "s0")] @ instr @ [RLw ("a1", src_offset, "s0")] @ acc) xs
+    
+    | TacLabel l :: xs when String.starts_with ~prefix:"if_" l || 
+                           String.starts_with ~prefix:"then_" l || 
+                           String.starts_with ~prefix:"while_" l-> process_tac ([RLabel l] @ acc) xs
+      
+    | TacGoto l :: xs -> process_tac ([RJ l] @ acc) xs
 
     | TacCall (dest, func_name, _, args) :: xs ->
     (* 准备参数 *)
@@ -242,7 +273,6 @@ let tac_to_riscv tac_list =
       | None -> failwith "No active function"
     in
     let save_return_inst = [RSw ("a0", dest_offset, "s0")] in
-
     process_tac (save_return_inst @ call_inst @ param_insts @ acc) xs
 
     | TacReturn (Some var) :: xs ->
@@ -257,6 +287,18 @@ let tac_to_riscv tac_list =
               RRet
             ] @ acc) xs
         | None -> failwith "No active function for return")
+    
+    | TacReturn None :: xs ->
+        (match !current_info with
+        | Some info ->
+            process_tac ( List.rev [
+              RLw ("ra", info.stack_size - 4, "sp");
+              RLw ("s0", info.stack_size - 8, "sp");
+              RAddi ("sp", "sp", info.stack_size);
+              RRet
+            ] @ acc) xs
+        | None -> failwith "No active function for return")
+
     | _ :: xs -> process_tac acc xs
   in
   process_tac [] tac_list
