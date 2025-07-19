@@ -139,42 +139,46 @@ let tac_to_riscv tac_list =
     | None -> failwith "No active function"
   in
 
-  List.iter (fun tac ->
-    match tac with
-    
-    | TacComment (_, comment_str, param_names) ->
+  let rec process_tac acc = function
+    | [] -> List.rev acc
+    | TacComment (_, comment_str, param_names) :: xs ->
       (* 使用字符串匹配提取函数名 *)
       if String.length comment_str > 9 && String.sub comment_str 0 9 = "function " then
         let name = String.sub comment_str 9 (String.length comment_str - 9) in
-        riscv_code := !riscv_code @ [RLabel name];
-        emit_prologue name param_names
+        riscv_code := [];
+        emit_prologue name param_names;
+        process_tac (List.rev (!riscv_code) @ [RLabel name] @  acc) xs
+      else
+        process_tac acc xs
     
-    | TacAssign (dest, src) ->
+    | TacAssign (dest, src) :: xs ->
       let dest_offset = get_var_offset dest in
       (try
         let value = int_of_string src in
-        (* 如果是常量赋值，直接加载到寄存器并存储到栈中 *)
-        riscv_code := !riscv_code @ [
-          RLi ("a0", value);  (* 将常量加载到寄存器 a0 *)
-          RSw ("a0", dest_offset, "s0")  (* 将寄存器 a0 的值存储到栈中 *)
-        ];
         (* 标记变量已经存储到栈中 *)
         (match !current_info with
         | Some info -> Hashtbl.add info.stored_vars dest true; Hashtbl.replace info.var_offsets dest dest_offset
-        | None -> failwith "No active function")
+        | None -> failwith "No active function");
+        (* 如果是常量赋值，直接加载到寄存器并存储到栈中 *)
+        process_tac ([
+          RSw ("a0", dest_offset, "s0");  (* 将寄存器 a0 的值存储到栈中 *)  
+          RLi ("a0", value)  (* 将常量加载到寄存器 a0 *)
+        ] @ acc) xs
+        
       with Failure _ ->
         let src_offset = get_var_offset src in
-        (* 始终生成赋值指令，无论 dest 是否已存储到栈中 *)
-        riscv_code := !riscv_code @ [
-          RLw ("a0", src_offset, "s0");
-          RSw ("a0", dest_offset, "s0")
-        ];
         (* 标记变量已经存储到栈中 *)
         (match !current_info with
         | Some info -> Hashtbl.add info.stored_vars dest true
-        | None -> failwith "No active function"))
+        | None -> failwith "No active function");
+        (* 始终生成赋值指令，无论 dest 是否已存储到栈中 *)
+        process_tac ([
+          RSw ("a0", dest_offset, "s0");  
+          RLw ("a0", src_offset, "s0")
+        ] @ acc) xs
+        )
 
-    | TacBinOp (dest, src1, op, src2) ->
+    | TacBinOp (dest, src1, op, src2) :: xs ->
         let dest_offset = get_var_offset dest in
         let src1_offset = get_var_offset src1 in
         let src2_offset = get_var_offset src2 in
@@ -192,13 +196,13 @@ let tac_to_riscv tac_list =
           | "||" -> (fun rd rs1 rs2 -> [ROr (rd, rs1, rs2)])
           | _ -> failwith "Unsupported operation"
         in
-        riscv_code := !riscv_code @ [
-          RLw ("a0", src1_offset, "s0");
-          RLw ("a1", src2_offset, "s0")] @
-          instr "a2" "a0" "a1" @
-          [RSw ("a2", dest_offset, "s0")]
+        process_tac (
+          [RSw ("a2", dest_offset, "s0")] @
+          instr "a2" "a0" "a1" @  
+          [RLw ("a1", src1_offset, "s0");
+          RLw ("a0", src2_offset, "s0")] @ acc) xs
     
-    | TacUnOp (dest, op, src) ->
+    | TacUnOp (dest, op, src) :: xs ->
       let dest_offset = get_var_offset dest in
       let src_offset = get_var_offset src in
       let instr = match op with
@@ -206,63 +210,53 @@ let tac_to_riscv tac_list =
         | "-" -> [RNeg ("a0", "a1")]  (* 负号操作：将 src 的值取负 *)
         | _ -> failwith ("Unsupported unary operation: " ^ op)
       in
-      riscv_code := !riscv_code @ [
-        RLw ("a1", src_offset, "s0")  (* 从栈中加载 src 的值到寄存器 a1 *)
-      ] @ instr @ [
-        RSw ("a0", dest_offset, "s0")  (* 将结果存储到 dest 的栈位置 *)
-      ];
+      process_tac (
+        [RSw ("a0", dest_offset, "s0")] @ instr @ [RLw ("a1", src_offset, "s0")] @ acc) xs
 
-    | TacCall (dest, func_name, _, args) ->
-        (* 准备参数 *)
-        List.iteri (fun i arg ->
-          let arg_offset = get_var_offset arg in
-          if i < 8 then
-            riscv_code := !riscv_code @ [
-              RLw (Printf.sprintf "a%d" i, arg_offset, "s0")
-            ]
-          else
-            (* 超过8个参数的情况需要通过栈传递 *)
-            riscv_code := !riscv_code @ [
-              RLw ("a0", arg_offset, "s0");
-              RSw ("a0", (i - 8) * 4, "sp")
-            ]
-        ) args;
-        
-        (* 调用函数 *)
-        riscv_code := !riscv_code @ [RCall func_name];
-        
-        (* 保存返回值 *)
-        (match !current_info with
-        | Some info ->
-            let dest_offset =
-              if Hashtbl.mem info.var_offsets dest then
-                Hashtbl.find info.var_offsets dest  (* 使用已有的栈偏移 *)
-              else begin
-                let new_offset = -info.stack_size in
-                info.stack_size <- info.stack_size + 4;
-                Hashtbl.add info.var_offsets dest new_offset;
-                new_offset
-              end
-            in
-            riscv_code := !riscv_code @ [
-              RSw ("a0", dest_offset, "s0")
-            ];
-            (* 确保变量的偏移值与存储位置一致 *)
-            Hashtbl.replace info.var_offsets dest dest_offset
-        | None -> failwith "No active function")
+    | TacCall (dest, func_name, _, args) :: xs ->
+    (* 准备参数 *)
+    let param_insts = List.mapi (fun i arg ->
+      let arg_offset = get_var_offset arg in
+      if i < 8 then
+        [RLw (Printf.sprintf "a%d" i, arg_offset, "s0")]  (* 使用寄存器传递参数 *)
+      else
+        (* 超过8个参数的情况需要通过栈传递 *)
+        [RSw ("a0", (i - 8) * 4, "sp");RLw ("a0", arg_offset, "s0")]
+    ) args |> List.flatten in
 
-    | TacReturn (Some var) ->
+    (* 调用函数 *)
+    let call_inst = [RCall func_name] in
+
+    (* 保存返回值 *)
+    let dest_offset =
+      match !current_info with
+      | Some info ->
+          if Hashtbl.mem info.var_offsets dest then
+            Hashtbl.find info.var_offsets dest  (* 使用已有的栈偏移 *)
+          else begin
+            let new_offset = -info.stack_size in
+            info.stack_size <- info.stack_size + 4;
+            Hashtbl.add info.var_offsets dest new_offset;
+            new_offset
+          end
+      | None -> failwith "No active function"
+    in
+    let save_return_inst = [RSw ("a0", dest_offset, "s0")] in
+
+    process_tac (save_return_inst @ call_inst @ param_insts @ acc) xs
+
+    | TacReturn (Some var) :: xs ->
         let offset = get_var_offset var in
         (match !current_info with
         | Some info ->
-            riscv_code := !riscv_code @ [
+            process_tac ( List.rev [
               RLw ("a0", offset, "s0");
               RLw ("ra", info.stack_size - 4, "sp");
               RLw ("s0", info.stack_size - 8, "sp");
               RAddi ("sp", "sp", info.stack_size);
               RRet
-            ]
+            ] @ acc) xs
         | None -> failwith "No active function for return")
-    | _ -> ()
-  ) tac_list;
-  !riscv_code
+    | _ :: xs -> process_tac acc xs
+  in
+  process_tac [] tac_list
