@@ -77,7 +77,7 @@ let scan_functions tac_list =
           info.stack_size <- info.stack_size + 4;
           let offset = -info.stack_size in
           Hashtbl.add info.var_offsets var offset;
-          Printf.printf "alloc space for variable %s\n" var;
+          (* Printf.printf "alloc space for variable %s\n" var; *)
     | _ -> ()
   in
 
@@ -150,25 +150,17 @@ let tac_to_riscv tac_list =
   String.fold_left (fun acc c -> acc && Char.code c >= Char.code '0' && Char.code c <= Char.code '9') true s
   in
   (* 获取变量在栈中的位置 *)
-  (* let get_var_offset var =
-    match !current_info with
-    | Some info ->
-        if Hashtbl.mem info.var_offsets var then
-        Hashtbl.find info.var_offsets var
-      else if is_digit_string var then
-        failwith ("Constant value used as variable: " ^ var)
-      else
-        failwith ("Variable not found: " ^ var)
-    | None -> failwith "No active function" *)
   let get_var_offset var tac =
   match !current_info with
   | Some info ->
       if Hashtbl.mem info.var_offsets var then
         Hashtbl.find info.var_offsets var
       else if is_digit_string var then
-        failwith ("Constant value used as variable: " ^ var ^ " in TAC: " ^ string_of_tac tac)
+        (Printf.eprintf "Error: Constant value used as variable: %s in TAC: %s\n" var (string_of_tac tac);
+        failwith ("Constant value used as variable: " ^ var ^ " in TAC: " ^ string_of_tac tac))
       else
-        failwith ("Variable not found: " ^ var ^ " in TAC: " ^ string_of_tac tac)
+        (Printf.eprintf "Error: Variable not found: %s in TAC: %s\n" var (string_of_tac tac);
+        failwith ("Variable not found: " ^ var ^ " in TAC: " ^ string_of_tac tac))
   | None -> failwith "No active function"
   in
 
@@ -185,9 +177,13 @@ let tac_to_riscv tac_list =
         process_tac acc xs
     
     | TacAssign (dest, src) :: xs ->
+      (* Printf.printf "Processing TacAssign: %s = %s\n" dest src; *)
+      (* 获取目标变量的栈偏移 *)
       let dest_offset = get_var_offset dest (TacAssign (dest, src)) in
       (try
         let value = int_of_string src in
+        (* Printf.printf "int value = %d to dest %s\n" value dest; *)
+        (* 如果 src 是常量，直接加载到寄存器 a0 *)
         (* 标记变量已经存储到栈中 *)
         (match !current_info with
         | Some info -> Hashtbl.add info.stored_vars dest true; Hashtbl.replace info.var_offsets dest dest_offset
@@ -199,6 +195,8 @@ let tac_to_riscv tac_list =
         ] @ acc) xs
         
       with Failure _ ->
+        (* Printf.eprintf "Failure occurred: %s\n" msg;
+        Printf.printf "int variable = %s to dest %s\n" src dest; *)
         let src_offset = get_var_offset src (TacAssign (dest, src)) in
         (* 标记变量已经存储到栈中 *)
         (match !current_info with
@@ -241,13 +239,15 @@ let tac_to_riscv tac_list =
           | "*" -> (fun rd rs1 rs2 -> [RMul (rd, rs1, rs2)])
           | "/" -> (fun rd rs1 rs2 -> [RDiv (rd, rs1, rs2)])
           | "%" -> (fun rd rs1 rs2 -> [RRem (rd, rs1, rs2)])
+          | "==" -> (fun rd rs1 rs2 -> [RSub (rd, rs1, rs2); RSeqz (rd, rd)])
+          | "!=" -> (fun rd rs1 rs2 -> [RSub (rd, rs1, rs2); RSeqz (rd, rd); RXori (rd, rd, 1)])
           | "<" -> (fun rd rs1 rs2 -> [RSlt (rd, rs1, rs2)])
           | "<=" -> (fun rd rs1 rs2 -> [RSlt (rd, rs1, rs2); RXori (rd, rd, 1)])
           | ">" -> (fun rd rs1 rs2 -> [RSgt (rd, rs1, rs2)])
           | ">=" -> (fun rd rs1 rs2 -> [RSgt (rd, rs1, rs2); RXori (rd, rd, 1)])
           | "&&" -> (fun rd rs1 rs2 -> [RAnd (rd, rs1, rs2)])
           | "||" -> (fun rd rs1 rs2 -> [ROr (rd, rs1, rs2)])
-          | _ -> failwith "Unsupported operation"
+          | _ -> failwith ("Unsupported operation " ^ op)
         in
         process_tac (
           [RSw ("a2", dest_offset, "s0")] @
@@ -281,35 +281,33 @@ let tac_to_riscv tac_list =
       ) xs
 
     | TacCall (dest, func_name, n, args) :: xs ->
-    (* 准备参数 *)
-    let param_insts = List.mapi (fun i arg ->
-      let arg_offset = get_var_offset arg (TacCall (dest, func_name, n, args)) in
-      if i < 8 then
-        [RLw (Printf.sprintf "a%d" i, arg_offset, "s0")]  (* 使用寄存器传递参数 *)
-      else
-        (* 超过8个参数的情况需要通过栈传递 *)
-        [RSw ("a0", (i - 8) * 4, "sp");RLw ("a0", arg_offset, "s0")]
-    ) args |> List.flatten in
-
-    (* 调用函数 *)
-    let call_inst = [RCall func_name] in
-
-    (* 保存返回值 *)
-    let dest_offset =
-      match !current_info with
-      | Some info ->
-          if Hashtbl.mem info.var_offsets dest then
-            Hashtbl.find info.var_offsets dest  (* 使用已有的栈偏移 *)
-          else begin
-            let new_offset = -info.stack_size in
-            info.stack_size <- info.stack_size + 4;
-            Hashtbl.add info.var_offsets dest new_offset;
-            new_offset
-          end
-      | None -> failwith "No active function"
-    in
-    let save_return_inst = [RSw ("a0", dest_offset, "s0")] in
-    process_tac (save_return_inst @ call_inst @ param_insts @ acc) xs
+        (* 准备参数 *)
+        let param_insts = List.mapi (fun i arg ->
+          let arg_offset = get_var_offset arg (TacCall (dest, func_name, n, args)) in
+          if i < 8 then
+            [RLw (Printf.sprintf "a%d" i, arg_offset, "s0")]  (* 使用寄存器传递参数 *)
+          else
+            (* 超过8个参数的情况需要通过栈传递 *)
+            [RSw ("a0", (i - 8) * 4, "sp");RLw ("a0", arg_offset, "s0")]
+        ) args |> List.flatten in
+        (* 调用函数 *)
+        let call_inst = [RCall func_name] in
+        (* 保存返回值 *)
+        let dest_offset =
+          match !current_info with
+          | Some info ->
+              if Hashtbl.mem info.var_offsets dest then
+                Hashtbl.find info.var_offsets dest  (* 使用已有的栈偏移 *)
+              else begin
+                let new_offset = -info.stack_size in
+                info.stack_size <- info.stack_size + 4;
+                Hashtbl.add info.var_offsets dest new_offset;
+                new_offset
+              end
+          | None -> failwith "No active function"
+        in
+        let save_return_inst = [RSw ("a0", dest_offset, "s0")] in
+        process_tac (save_return_inst @ call_inst @ param_insts @ acc) xs
 
     | TacReturn (Some var) :: xs ->
         let offset = get_var_offset var (TacReturn (Some var)) in
