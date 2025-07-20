@@ -56,71 +56,56 @@ int is_prime(int n)
     return 1;
 }
 
-int main()
-{
-    int a = 1;
-    int b = 2;
-    int c = 3;
-    int d = 4;
+int main() {
+    int a = 656;
+    int b = -683;
+    int c = -926;
+    int d = -536;
 
-    int expr1 = ((a + b) * c + (d * a)) / ((b + c) % (a + -d + 2048) + 1) + (a * b * c * (d - 2 - c));
+    int expr1 = ((a - b) * c - (d * a)) / ((b + c) % (a + -d + 2048) + 1) - (-a * -b * +c * (d - +2 - -c));
 
-    int x = 0;
-    int y = 1;
-    int z = 2;
+    int x = -242;
+    int y = 900;
+    int z = 914;
 
     int expr2 = 0;
-    if ((x > y) && ((z + 1) == 1))
-    {
+    if ((x > y) && ((z + 1) == 1)) {
         expr2 = 1;
     }
 
     int expr3 = 0;
-    if ((x < y) || ((z + 2) == 2))
-    {
+    if ((x < y) || ((z + 2) == 2)) {
         expr3 = 1;
     }
 
     int expr4 = 0;
-    if (!((x > 0 && y < 0) || (z > 0 && x < 0)) && (y > 0 || x < 0))
-    {
+    if (!((x > 364 && y < -431) || (z > 981 && x < 490)) && (y > -570 || x < -180)) {
         expr4 = 1;
     }
 
-    int n1 = 42;
-    int n2 = 56;
-    int n3 = 87;
+    int n1 = 12603;
+    int n2 = 32569;
+    int n3 = 30883;
 
-    int expr5 = factorial(gcd(n2, n3)) + fibonacci(n1 / 5);
+    int expr5 = factorial(gcd(n2 % 12, n3 % 12)) + fibonacci(n1 % 10 + 2);
 
     int max_val = 0;
-    if (n1 > n2 && n1 > n3)
-    {
+    if (n1 > n2 && n1 > n3) {
         max_val = n1;
-    }
-    else if (n2 > n1 && n2 > n3)
-    {
+    } else if (n2 > n1 && n2 > n3) {
         max_val = n2;
-    }
-    else
-    {
+    } else {
         max_val = n3;
     }
 
     int sum = 0;
     int i = 1;
-    while (i <= 10)
-    {
-        if (i % 2 == 0)
-        {
+    while (i <= 16) {
+        if (i % 3 == 0) {
             sum = sum + i * i;
-        }
-        else if (i % 3 == 0)
-        {
+        } else if (i % 4 == 0) {
             sum = sum + i * i * i;
-        }
-        else
-        {
+        } else {
             sum = sum + i;
         }
         i = i + 1;
@@ -128,12 +113,10 @@ int main()
 
     int expr6 = 0;
     i = 1;
-    while (i <= 5)
-    {
+    while (i <= 7) {
         int j = 1;
         int term = 1;
-        while (j <= i)
-        {
+        while (j <= i) {
             term = term * j;
             j = j + 1;
         }
@@ -142,55 +125,38 @@ int main()
     }
 
     int expr7 = 0;
-    if (is_prime(n1))
-    {
-        if (is_prime(n2))
-        {
+    if (is_prime(n1)) {
+        if (is_prime(n2)) {
             expr7 = n1 * n2;
-        }
-        else if (is_prime(n3))
-        {
+        } else if (is_prime(n3)) {
             expr7 = n1 * n3;
-        }
-        else
-        {
+        } else {
             expr7 = n1;
         }
-    }
-    else if (is_prime(n2))
-    {
-        if (is_prime(n3))
-        {
+    } else if (is_prime(n2)) {
+        if (is_prime(n3)) {
             expr7 = n2 * n3;
-        }
-        else
-        {
+        } else {
             expr7 = n2;
         }
-    }
-    else if (is_prime(n3))
-    {
+    } else if (is_prime(n3)) {
         expr7 = n3;
-    }
-    else
-    {
+    } else {
         expr7 = n1 + n2 + n3;
     }
 
     int expr8 = 0;
-    int num = 2345;
+    int num = 13143252;
     int bit_count = 0;
 
-    while (num > 0)
-    {
-        if (num % 2 == 1)
-        {
+    while (num > 0) {
+        if (num % 2 == 1) {
             bit_count = bit_count + 1;
         }
         num = num / 2;
     }
 
-    int final_result = expr1 + expr2 + expr3 + expr4 + expr5 + max_val + sum + expr6 + expr7 + bit_count;
+    int final_result = expr1 + expr2 - expr3 - expr4 - expr5 - max_val - sum + expr6 + expr7 - bit_count;
 
     return final_result % 256;
 }

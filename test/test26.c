@@ -101,5 +101,5 @@ int main()
 
     int final_result = result1 + result2 + result3 + result4;
 
-    return final_result % 256;
+    return final_result - 7803;
 }

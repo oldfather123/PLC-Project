@@ -63,7 +63,7 @@ let scan_functions tac_list =
         info.stack_size <- info.stack_size + 4;  (* 先更新栈空间大小 *)
         let offset = -info.stack_size in         (* 再计算偏移值 *)
         Hashtbl.add info.var_offsets param_name offset;
-      (* Printf.printf "alloc space for param %s at offset %d\n" param_name offset; *)
+      Printf.printf "alloc space for param %s at offset %d\n" param_name offset;
     ) param_names;
     Hashtbl.add func_table name info;
     current_func := name;
@@ -147,7 +147,7 @@ let tac_to_riscv tac_list =
     else
       (* 超过8个参数的情况需要通过栈传递 *)
       riscv_code := !riscv_code @ [
-        RLw ("a0", offset, "sp");  (* 从栈中加载参数 *)
+        RLw ("a0", (i - 8) * 4, "s0");  (* 从栈中加载参数 *)
         RSw ("a0", offset, "s0")   (* 将参数存储到栈中 *)
       ]
     ) param_names;
@@ -299,7 +299,7 @@ let tac_to_riscv tac_list =
             (* 超过8个参数的情况需要通过栈传递 *)
             (* Printf.printf "param %s in stack at offset %d\n" arg ((i - 8) * 4); *)
             (* 将参数存储到栈中 *)
-            [RSw ("a0", (i - 8) * 4, "s0");RLw ("a0", arg_offset, "sp")]
+            [RSw ("a0", (i - 8) * 4, "sp");RLw ("a0", arg_offset, "s0")]
         ) args |> List.flatten in
         (* 调用函数 *)
         let call_inst = [RCall func_name] in
