@@ -259,9 +259,10 @@ let tac_to_riscv tac_list =
       let dest_offset = get_var_offset dest (TacUnOp (dest, op, src)) in
       let src_offset = get_var_offset src (TacUnOp (dest, op, src))in
       let instr = match op with
+        | "+" -> [RMv ("a0", "a1")]  (* 正号操作：将 src 的值复制到 a0 *)
         | "!" -> [RSeqz ("a0", "a1")]  (* 非操作：将 src 的值取反 *)
         | "-" -> [RNeg ("a0", "a1")]  (* 负号操作：将 src 的值取负 *)
-        | _ -> failwith ("Unsupported unary operation: " ^ op)
+        | _ -> (Printf.eprintf "Unsupported unary operation: %s" op; failwith ("Unsupported unary operation: " ^ op))
       in
       process_tac (
         [RSw ("a0", dest_offset, "s0")] @ instr @ [RLw ("a1", src_offset, "s0")] @ acc) xs
