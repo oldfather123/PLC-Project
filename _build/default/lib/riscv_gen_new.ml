@@ -138,13 +138,19 @@ let tac_to_riscv tac_list =
       RAddi ("s0", "sp", info.stack_size)
     ];
     List.iteri (fun i param_name ->
-    if i < info.param_count then
-      let offset = Hashtbl.find info.var_offsets param_name in
+    let offset = Hashtbl.find info.var_offsets param_name in
+    if i < 8 then
+      (* 前8个参数使用寄存器传递 *)
       riscv_code := !riscv_code @ [
         RSw (Printf.sprintf "a%d" i, offset, "s0")
-      ];
-      (* Printf.printf "%s at offset %d\n" param_name offset; *)
-  ) param_names;
+      ]
+    else
+      (* 超过8个参数的情况需要通过栈传递 *)
+      riscv_code := !riscv_code @ [
+        RLw ("a0", offset, "sp");  (* 从栈中加载参数 *)
+        RSw ("a0", offset, "s0")   (* 将参数存储到栈中 *)
+      ]
+    ) param_names;
   in
   let is_digit_string s =
   String.fold_left (fun acc c -> acc && Char.code c >= Char.code '0' && Char.code c <= Char.code '9') true s
@@ -286,10 +292,14 @@ let tac_to_riscv tac_list =
         let param_insts = List.mapi (fun i arg ->
           let arg_offset = get_var_offset arg (TacCall (dest, func_name, n, args)) in
           if i < 8 then
+            (* Printf.printf "param %s in register a%d\n" arg i; *)
+            (* 前8个参数使用寄存器传递 *)
             [RLw (Printf.sprintf "a%d" i, arg_offset, "s0")]  (* 使用寄存器传递参数 *)
           else
             (* 超过8个参数的情况需要通过栈传递 *)
-            [RSw ("a0", (i - 8) * 4, "sp");RLw ("a0", arg_offset, "s0")]
+            (* Printf.printf "param %s in stack at offset %d\n" arg ((i - 8) * 4); *)
+            (* 将参数存储到栈中 *)
+            [RSw ("a0", (i - 8) * 4, "s0");RLw ("a0", arg_offset, "sp")]
         ) args |> List.flatten in
         (* 调用函数 *)
         let call_inst = [RCall func_name] in
