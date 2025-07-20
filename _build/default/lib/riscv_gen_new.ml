@@ -63,7 +63,7 @@ let scan_functions tac_list =
         info.stack_size <- info.stack_size + 4;  (* 先更新栈空间大小 *)
         let offset = -info.stack_size in         (* 再计算偏移值 *)
         Hashtbl.add info.var_offsets param_name offset;
-      Printf.printf "alloc space for param %s at offset %d\n" param_name offset;
+      (* Printf.printf "alloc space for param %s at offset %d\n" param_name offset; *)
     ) param_names;
     Hashtbl.add func_table name info;
     current_func := name;
