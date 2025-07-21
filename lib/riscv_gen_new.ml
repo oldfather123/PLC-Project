@@ -64,7 +64,7 @@ let scan_functions tac_list =
         let offset = -info.stack_size in         (* 再计算偏移值 *)
         Hashtbl.add info.var_offsets param_name offset;
       (* Printf.printf "alloc space for param %s at offset %d\n" param_name offset; *)
-    ) param_names;
+    ) param_names; 
     Hashtbl.add func_table name info;
     current_func := name;
     current_info := Some info
@@ -79,6 +79,13 @@ let scan_functions tac_list =
           Hashtbl.add info.var_offsets var offset;
           (* Printf.printf "alloc space for variable %s\n" var; *)
     | _ -> ()
+  in
+
+  let add_param_size () =
+  match !current_info with
+  | Some info ->
+      info.stack_size <- info.stack_size + 4;  (* 每个参数增加 4 字节的栈空间 *)
+  | None -> failwith "No active function"
   in
 
   List.iter (fun tac ->
@@ -98,6 +105,7 @@ let scan_functions tac_list =
         add_var_if_new dest
     | TacCall (dest, _, _, _) ->
         add_var_if_new dest
+    | TacParam _ -> add_param_size ()
     | _ -> ()
   ) tac_list;
 
@@ -297,9 +305,9 @@ let tac_to_riscv tac_list =
             [RLw (Printf.sprintf "a%d" i, arg_offset, "s0")]  (* 使用寄存器传递参数 *)
           else
             (* 超过8个参数的情况需要通过栈传递 *)
-            (* Printf.printf "param %s in stack at offset %d\n" arg ((i - 8) * 4); *)
+            (* Printf.printf "func %s param %s in stack at offset %d\n" func_name arg ((i - 8) * 4); *)
             (* 将参数存储到栈中 *)
-            [RSw ("a0", (i - 8) * 4, "sp");RLw ("a0", arg_offset, "s0")]
+            [RSw ("a0", (i - 8) * 4, "sp"); RLw ("a0", arg_offset, "s0")]
         ) args |> List.flatten in
         (* 调用函数 *)
         let call_inst = [RCall func_name] in
