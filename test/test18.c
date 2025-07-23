@@ -1,14 +1,31 @@
-int factorial(int n)
+int is_prime(int n)
 {
     if (n <= 1)
     {
+        return 0;
+    }
+    if (n <= 3)
+    {
         return 1;
     }
-    return n * factorial(n - 1);
+    if (n % 2 == 0 || n % 3 == 0)
+    {
+        return 0;
+    }
+
+    int i = 5;
+    while (i * i <= n)
+    {
+        if (n % i == 0 || n % (i + 2) == 0)
+        {
+            return 0;
+        }
+        i = i + 6;
+    }
+    return 1;
 }
 int main () {
-    int x = 2;
-    int y = 3;
-    int z = factorial(x + y);
-    return z;
+    int x = 12603;
+    int result = is_prime(x);
+    return result;
 }

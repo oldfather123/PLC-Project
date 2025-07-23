@@ -1,4 +1,4 @@
-# dune exec Edit2 test/test26.c
+# dune exec Edit2 test/test22.c
 # OCAMLPARAM: unset
 # Shared cache: enabled-except-user-rules
 # Shared cache location: /home/oldfather/.cache/dune/db
@@ -13,4 +13,4 @@
 #  ; build_dir = In_build_dir "default"
 #  ; instrument_with = []
 #  }
-$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_9e1250_output
+$ /home/oldfather/.opam/ocaml-variants/bin/ocamlc.opt -config > /tmp/dune_b25723_output
