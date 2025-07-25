@@ -152,7 +152,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
   | ExprStmt e -> ignore (gen_expr e env code)
   | Assignment (id, e) ->
       let t = gen_expr e env code in
-      let ssa_id = 
+      (* let ssa_id = 
         match lookup_var id !scope_stack with
         | Some v -> v
         | None -> 
@@ -168,18 +168,26 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
                 `Control (* 默认使用Control类型 *)
           in
           inc_ssa_version env id scope_type
+      in *)
+      let scope_type = 
+        match !scope_kinds with
+        | Block :: FBlock :: _ -> `Control
+        | While :: Block :: _ | If :: Block ::  _ -> `Control
+        | Block :: Block :: _ -> `Block
+        | _ -> `Control
       in
+      let ssa_id = inc_ssa_version env id scope_type in 
+      (match !scope_stack with
+      | current::_ -> Hashtbl.add current id ssa_id
+      | [] -> failwith "No active scope");
       code := !code @ [TacAssign (ssa_id, t)]
   | VarDecl (id, e) ->
       let t = gen_expr e env code in
       let scope_type = 
       match !scope_kinds with
-      | Block :: FBlock :: _ -> 
-          `Control  (* 如果是最外层的Block，则是函数作用域，使用Control类型 *)
-      | While::_ | If::_ -> 
-          `Control  (* 控制结构中使用Control类型 *)
-      | Block::_ -> 
-          `Block   (* 嵌套块中使用Block类型 *)
+      | Block :: FBlock :: _ -> `Control
+      | While :: Block :: _ | If :: Block ::  _ -> `Control
+      | Block :: Block :: _ -> `Block
       | _ -> 
           `Control (* 默认使用Control类型 *)
     in

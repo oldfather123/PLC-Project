@@ -127,13 +127,74 @@ let string_of_tac tac =
   | TacReturn None -> "TacReturn(None)"
   | _ -> "Unknown TAC"
 
+(* 统一变量名，移除版本号 *)
+let normalize_var_name var =
+  try
+    let parts = String.split_on_char '_' var in
+    match parts with
+    | [name; scope; version; func] when version <> "0" -> 
+        String.concat "_" [name; scope; func]
+    | _ -> var  (* 如果不符合命名格式，保持原样 *)
+  with _ -> var
+
+let is_digit_string s =
+  String.fold_left (fun acc c -> acc && Char.code c >= Char.code '0' && Char.code c <= Char.code '9') true s
+
+(* 规范化 TAC 指令中的变量名 *)
+let normalize_tac tac =
+  match tac with
+  | TacAssign (dest, src) ->
+      TacAssign (normalize_var_name dest, 
+                 if is_digit_string src then src else normalize_var_name src)
+  | TacBinOp (dest, src1, op, src2) ->
+      TacBinOp (normalize_var_name dest, 
+                normalize_var_name src1, 
+                op, 
+                normalize_var_name src2)
+  | TacUnOp (dest, op, src) ->
+      TacUnOp (normalize_var_name dest, 
+               op, 
+               normalize_var_name src)
+  | TacIfGoto (cond, label) ->
+      TacIfGoto (normalize_var_name cond, label)
+  | TacCall (dest, func_name, n, args) ->
+      TacCall (normalize_var_name dest, 
+               func_name, 
+               n, 
+               List.map normalize_var_name args)
+  | TacReturn (Some var) ->
+      TacReturn (Some (normalize_var_name var))
+  | TacParam t ->
+      TacParam (normalize_var_name t)
+  | _ -> tac
+
+let tac_to_string = function
+  | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
+  | TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
+  | TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
+  | TacLabel l -> l ^ ":"
+  | TacGoto l -> "goto " ^ l
+  | TacIfGoto (cond, l) -> Printf.sprintf "if %s goto %s" cond l
+  | TacParam t -> "param " ^ t
+  | TacCall (t, f, n, _) -> Printf.sprintf "%s = call %s, %d" t f n
+  | TacReturn None -> "return"
+  | TacReturn (Some t) -> "return " ^ t
+  | TacComment (_, s, _) -> "# " ^ s
+  | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
+
+let print_tac tac_list =
+  List.iter (fun tac -> print_endline (tac_to_string tac)) tac_list
+
 (* 生成 RISC-V 代码 *)
 let tac_to_riscv tac_list =
-  let func_table = scan_functions tac_list in
+  let normalized_tac_list = List.map normalize_tac tac_list in
+  let func_table = scan_functions normalized_tac_list in
   let riscv_code = ref [] in
   let current_func = ref "" in
   let current_info = ref None in
 
+  print_tac normalized_tac_list;
+  Printf.printf "==Normalized TAC==\n";
   (* 生成函数序言 *)
   let emit_prologue name param_names =
     let info = Hashtbl.find func_table name in
@@ -159,9 +220,6 @@ let tac_to_riscv tac_list =
         RSw ("a0", offset, "s0")   (* 将参数存储到栈中 *)
       ]
     ) param_names;
-  in
-  let is_digit_string s =
-  String.fold_left (fun acc c -> acc && Char.code c >= Char.code '0' && Char.code c <= Char.code '9') true s
   in
   (* 获取变量在栈中的位置 *)
   let get_var_offset var tac =
@@ -354,4 +412,4 @@ let tac_to_riscv tac_list =
 
     | _ :: xs -> process_tac acc xs
   in
-  process_tac [] tac_list
+  process_tac [] normalized_tac_list

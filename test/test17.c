@@ -7,12 +7,18 @@
 //     x = y;
 //     return x;
 // }
+int func (int a, int b, int c) {
+    if (a == 1) {
+       a = 2; 
+    }
+    a = c + 1;
+    b = b + a;
+    return b;
+}
 int main () {
     int a = 1;
     int b = 2;
     int c = 3;
-    a = 2;
-    a = c + 1;
-    b = b + a;
+    b = func (a, b, c);
     return b;
 }
