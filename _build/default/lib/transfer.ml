@@ -172,7 +172,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       (* let scope_type = 
         match !scope_kinds with
         | Block :: FBlock :: _ -> `Control
-        | While :: Block :: _ | If :: Block ::  _ -> `Control
+        | kinds when List.exists (function While | If -> true | _ -> false) kinds -> `Control
         | Block :: Block :: _ -> `Block
         | _ -> `Control
       in
@@ -186,8 +186,8 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let scope_type = 
       match !scope_kinds with
       | Block :: FBlock :: _ -> `Control
-      | While :: Block :: _ | If :: Block ::  _ -> `Control
-      | Block :: Block :: _ -> `Block
+      | While :: _ | If :: _ -> `Control
+      | Block :: _ -> `Block
       | _ -> 
           `Control (* 默认使用Control类型 *)
     in

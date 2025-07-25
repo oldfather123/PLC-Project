@@ -7,18 +7,36 @@
 //     x = y;
 //     return x;
 // }
-int func (int a, int b, int c) {
-    if (a == 1) {
-       a = 2; 
+int func () {
+    int sum = 0;
+    int i = 1;
+    while (i <= 16) {
+        if (i % 3 == 0) {
+            sum = sum + i * i;
+        }
+        else if (i % 4 == 0) {
+            sum = sum + i * i * i;
+        }
+        else {
+            sum = sum + i;
+        }
+        i = i + 1;
     }
-    a = c + 1;
-    b = b + a;
-    return b;
+    int expr6 = 0;
+    i = 1;
+    while (i <= 7) {
+        int j = 1;
+        int term = 1;
+        while (j <= i) {
+            term = term * j;
+            j = j + 1;
+        }
+        expr6 = expr6 + term;
+        i = i + 1;
+    }
+    return expr6;
 }
 int main () {
-    int a = 1;
-    int b = 2;
-    int c = 3;
-    b = func (a, b, c);
+    int b = func ();
     return b;
 }

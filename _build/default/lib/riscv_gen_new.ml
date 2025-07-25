@@ -192,9 +192,10 @@ let tac_to_riscv tac_list =
   let riscv_code = ref [] in
   let current_func = ref "" in
   let current_info = ref None in
-
-  (* print_tac normalized_tac_list;
-  Printf.printf "==Normalized TAC==\n"; *)
+  
+  (* Printf.printf "==Normalized TAC==\n";
+  print_tac normalized_tac_list; *)
+  
   (* 生成函数序言 *)
   let emit_prologue name param_names =
     let info = Hashtbl.find func_table name in
