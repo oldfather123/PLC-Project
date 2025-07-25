@@ -143,7 +143,7 @@ let is_digit_string s =
 (* 规范化 TAC 指令中的变量名 *)
 let normalize_tac tac =
   match tac with
-  | TacAssign (dest, src) ->
+  (* | TacAssign (dest, src) ->
       TacAssign (normalize_var_name dest, 
                  if is_digit_string src then src else normalize_var_name src)
   | TacBinOp (dest, src1, op, src2) ->
@@ -165,7 +165,7 @@ let normalize_tac tac =
   | TacReturn (Some var) ->
       TacReturn (Some (normalize_var_name var))
   | TacParam t ->
-      TacParam (normalize_var_name t)
+      TacParam (normalize_var_name t) *)
   | _ -> tac
 
 (* let tac_to_string = function

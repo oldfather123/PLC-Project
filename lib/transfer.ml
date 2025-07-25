@@ -152,7 +152,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
   | ExprStmt e -> ignore (gen_expr e env code)
   | Assignment (id, e) ->
       let t = gen_expr e env code in
-      (* let ssa_id = 
+      let ssa_id = 
         match lookup_var id !scope_stack with
         | Some v -> v
         | None -> 
@@ -168,8 +168,8 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
                 `Control (* 默认使用Control类型 *)
           in
           inc_ssa_version env id scope_type
-      in *)
-      let scope_type = 
+      in
+      (* let scope_type = 
         match !scope_kinds with
         | Block :: FBlock :: _ -> `Control
         | While :: Block :: _ | If :: Block ::  _ -> `Control
@@ -179,7 +179,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let ssa_id = inc_ssa_version env id scope_type in 
       (match !scope_stack with
       | current::_ -> Hashtbl.add current id ssa_id
-      | [] -> failwith "No active scope");
+      | [] -> failwith "No active scope"); *)
       code := !code @ [TacAssign (ssa_id, t)]
   | VarDecl (id, e) ->
       let t = gen_expr e env code in
