@@ -168,7 +168,7 @@ let normalize_tac tac =
       TacParam (normalize_var_name t)
   | _ -> tac
 
-let tac_to_string = function
+(* let tac_to_string = function
   | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
   | TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
   | TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
@@ -183,7 +183,7 @@ let tac_to_string = function
   | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
 let print_tac tac_list =
-  List.iter (fun tac -> print_endline (tac_to_string tac)) tac_list
+  List.iter (fun tac -> print_endline (tac_to_string tac)) tac_list *)
 
 (* 生成 RISC-V 代码 *)
 let tac_to_riscv tac_list =
@@ -193,8 +193,8 @@ let tac_to_riscv tac_list =
   let current_func = ref "" in
   let current_info = ref None in
   
-  Printf.printf "==Normalized TAC==\n";
-  print_tac normalized_tac_list;
+  (* Printf.printf "==Normalized TAC==\n";
+  print_tac normalized_tac_list; *)
   
   (* 生成函数序言 *)
   let emit_prologue name param_names =
