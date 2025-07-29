@@ -82,7 +82,7 @@ let print_func_def = function
     Printf.printf "%s\n\n" (print_func_def func_def)
   ) comp_unit *)
 
-let parse_file filename =
+(* let parse_file filename =
   let ic = open_in filename in
   let lexbuf = Lexing.from_channel ic in
   Lexing.set_filename lexbuf filename;
@@ -98,7 +98,7 @@ let parse_file filename =
       pos.pos_fname
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
-    raise e
+    raise e *)
 
 let parse_stdin () =
   let lexbuf = Lexing.from_channel stdin in
@@ -194,9 +194,9 @@ let print_riscv riscv_list =
 let () =
   try
     let ast = 
-      if Array.length Sys.argv > 1 then
+      (* if Array.length Sys.argv > 1 then
         parse_file Sys.argv.(1)
-      else
+      else *)
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
