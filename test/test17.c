@@ -1,12 +1,3 @@
-// int main () {
-//     int x = 5;
-//     while (x != 0) {
-//         x = x - 1;
-//     }
-//     int y = 3;
-//     x = y;
-//     return x;
-// }
 int func () {
     int sum = 0;
     int i = 1;

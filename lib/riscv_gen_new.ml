@@ -143,7 +143,7 @@ let is_digit_string s =
 (* 规范化 TAC 指令中的变量名 *)
 let normalize_tac tac =
   match tac with
-  (* | TacAssign (dest, src) ->
+  | TacAssign (dest, src) ->
       TacAssign (normalize_var_name dest, 
                  if is_digit_string src then src else normalize_var_name src)
   | TacBinOp (dest, src1, op, src2) ->
@@ -165,10 +165,10 @@ let normalize_tac tac =
   | TacReturn (Some var) ->
       TacReturn (Some (normalize_var_name var))
   | TacParam t ->
-      TacParam (normalize_var_name t) *)
+      TacParam (normalize_var_name t)
   | _ -> tac
 
-(* let tac_to_string = function
+let tac_to_string = function
   | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
   | TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
   | TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
@@ -183,7 +183,7 @@ let normalize_tac tac =
   | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
 let print_tac tac_list =
-  List.iter (fun tac -> print_endline (tac_to_string tac)) tac_list *)
+  List.iter (fun tac -> print_endline (tac_to_string tac)) tac_list
 
 (* 生成 RISC-V 代码 *)
 let tac_to_riscv tac_list =
@@ -193,8 +193,8 @@ let tac_to_riscv tac_list =
   let current_func = ref "" in
   let current_info = ref None in
   
-  (* Printf.printf "==Normalized TAC==\n";
-  print_tac normalized_tac_list; *)
+  Printf.printf "==Normalized TAC==\n";
+  print_tac normalized_tac_list;
   
   (* 生成函数序言 *)
   let emit_prologue name param_names =
