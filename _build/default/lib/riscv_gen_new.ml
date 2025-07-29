@@ -130,10 +130,10 @@ let string_of_tac tac =
 (* 统一变量名，移除版本号 *)
 let normalize_var_name var =
   try
-    let parts = String.split_on_char '_' var in
+    let parts = String.split_on_char '-' var in
     match parts with
     | [name; scope; version; func] when version <> "0" -> 
-        String.concat "_" [name; scope; func]
+        String.concat "-" [name; scope; func]
     | _ -> var  (* 如果不符合命名格式，保持原样 *)
   with _ -> var
 
