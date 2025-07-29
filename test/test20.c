@@ -1,45 +1,41 @@
-int func() {
-    int x1 = 1;
-    int x2 = 1;
-    int x3 = 1;
-    int x4 = 1;
-    int x5 = 1;
-    int x6 = 1;
-    int x7 = 1;
-    int x8 = 1;
-    int x9 = 1;
-    int x10 = 1;
-    int x11 = 1;
-    int x12 = 1;
-    int x13 = 1;
-    int x14 = 1;
-    int x15 = 1;
-    int x16 = 1;
-    int x17 = 1;
-    int x18 = 1;
-    int x19 = 1;
-    int x20 = 1;
-    int x21 = 1;
-    int x22 = 1;
-    int x23 = 1;
-    int x24 = 1;
-    int x25 = 1;
-    int x26 = 1;
-    int x27 = 1;
-    int x28 = 1;
-    int x29 = 1;
-    int x30 = 1;
-    int x31 = 1;
-    int x32 = 1;
-    int x33 = 1;
-    int x34 = 1;
-    int x35 = 1;
-    return x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+
-           x11+x12+x13+x14+x15+x16+x17+x18+x19+x20+
-           x21+x22+x23+x24+x25+x26+x27+x28+x29+x30+
-           x31+x32+x33+x34+x35;  // 预期结果：35
-}
-int main() {
-    int result = func();
+int factorial(int n)
+{
+    int result = 1;
+    while (n > 0)
+    {
+        result = result * n;
+        n = n - 1;
+    }
     return result;
+}
+
+// 计算组合数 C(n,k)
+int combination(int n, int k)
+{
+    if (k > n)
+    {
+        return 0;
+    }
+    if (k == 0 || k == n)
+    {
+        return 1;
+    }
+
+    // 使用公式 C(n,k) = n!/(k!*(n-k)!)
+    return factorial(n) / (factorial(k) * factorial(n - k));
+}
+int main()
+{
+    int result = 0;
+    // int fib = fibonacci(12);
+    // int gcd_result = gcd(22, 15);
+    // int prime_check = isPrime(17);
+    int fact = factorial(8);
+    int comb = combination(7, 3);
+    // int pow_result = power(3, 11);
+    // int complex_result = complexFunction(3, 5, 1);
+    // int short_circuit = shortCircuit(-5, 10);
+    // int nested_loops_conds_result = nestedLoopsAndConditions(10);
+    // int nested_calls_result = nestedCalls(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+    return (fact + comb) % 256;
 }

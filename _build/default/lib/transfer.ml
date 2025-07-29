@@ -295,9 +295,6 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
 
 let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
   current_func := name;
-  (* let a = List.map (function Param id -> id) params in
-  let t = new_temp () in
-  let code = ref [TacComment (t, "function " ^ name, a)] in *)
   let env = ssa_version () in
   push_scope FBlock;  (* 创建函数作用域 *)
   (* 处理函数参数 *)
@@ -306,7 +303,7 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
     match !scope_stack with
     | current::_ -> 
         Hashtbl.add current id ssa_id;  (* 添加到当前作用域 *)
-        id ^ "-Control-0-" ^ name 
+        id ^ "-Control-" ^ name 
     | [] -> failwith "No active scope"
   ) params in
 
