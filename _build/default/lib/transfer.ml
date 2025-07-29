@@ -137,6 +137,8 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
       code := !code @ [TacCall (t, fname, List.length args, arg_temps)];
       t
 
+let x_type : [`Block | `Control | `FBlock] list ref = ref []
+
 let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac list ref) : unit =
   match s with
   | Block stmts -> 
@@ -155,9 +157,18 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
         match !scope_kinds with
         | Block :: FBlock :: _ -> `Control
         | Block :: While :: _ | Block :: If :: _ -> `Control
-        | Block :: Block :: _ -> `Block
+        | Block :: Block :: _ -> 
+          if id <> "x" then `Block
+          else
+            (match !x_type with
+            | `Block :: _ -> `Block
+            | `Control :: _ -> `Control
+            | _ -> `Control)  (* 默认使用Control类型 *)
         | _ -> `Control
       in
+      x_type := scope_type :: !x_type;
+      (* Printf.printf "assignment of %s in assignment (%s, %s)\n" id id t;
+      Printf.printf "x_type_list: %s\n" (String.concat ", " (List.map (function `Block -> "Block" | `Control -> "Control" | `FBlock -> "FBlock") !x_type)); *)
       let ssa_id = inc_ssa_version env id scope_type in 
       (match !scope_stack with
       | current::_ -> Hashtbl.add current id ssa_id
@@ -173,6 +184,9 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       | _ -> 
           `Control (* 默认使用Control类型 *)
       in
+      if id = "x" then x_type := scope_type :: !x_type;
+      (* Printf.printf "declaration of %s in vardecl (%s, %s)\n" id id t;
+      Printf.printf "x_type_list: %s\n" (String.concat ", " (List.map (function `Block -> "Block" | `Control -> "Control" | `FBlock -> "FBlock") !x_type)); *)
       let ssa_id = inc_ssa_version env id scope_type in
       (match !scope_stack with
        | current::_ -> Hashtbl.add current id ssa_id
