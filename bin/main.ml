@@ -1,8 +1,8 @@
 (* open Lib.Ast *)
 open Lib.Lexer
 open Lib.Parser
-(* open Lib.Transfer
-open Lib.Riscv_gen_new *)
+open Lib.Transfer
+open Lib.Riscv_gen_new
 (* open Lib.Cfg_gen *)
 
 (* 打印AST的辅助函数 *)
@@ -111,7 +111,7 @@ let parse_stdin () =
       (pos.pos_cnum - pos.pos_bol + 1);
     raise e
 
-let run_comp_unit comp_unit =
+(* let run_comp_unit comp_unit =
   let env = Lib.Env.create () in
   List.iter (Lib.Env.add_func env) comp_unit;
   match Lib.Env.find_func env "main" with
@@ -132,7 +132,7 @@ let run_comp_unit comp_unit =
           Printf.printf "ret\n";
           (* Printf.printf "Program returned: %d\n" n *)
        | _ -> Printf.printf "Program returned a function\n")
-  | exception _ -> Printf.eprintf "No 'main' function found\n"
+  | exception _ -> Printf.eprintf "No 'main' function found\n" *)
 
 (* let string_of_tac = function
   | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
@@ -151,7 +151,7 @@ let run_comp_unit comp_unit =
 let print_tac tac_list =
   List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list *)
 
-(* let print_riscv_inst = function
+let print_riscv_inst = function
   | RAdd (rd, rs1, rs2) -> Printf.printf "add %s, %s, %s\n" rd rs1 rs2
   | RSub (rd, rs1, rs2) -> Printf.printf "sub %s, %s, %s\n" rd rs1 rs2
   | RMul (rd, rs1, rs2) -> Printf.printf "mul %s, %s, %s\n" rd rs1 rs2
@@ -182,7 +182,7 @@ let print_tac tac_list =
   | RBge (r1, r2, label) -> Printf.printf "bge %s, %s, %s\n" r1 r2 label
 
 let print_riscv riscv_list =
-  List.iter print_riscv_inst riscv_list *)
+  List.iter print_riscv_inst riscv_list
 
 (* let print_cfg cfg =
   Hashtbl.iter (fun label block ->
@@ -200,16 +200,16 @@ let () =
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
-    run_comp_unit ast;
+    (* run_comp_unit ast; *)
     
-    (* let tac_list = gen_comp_unit ast in *)
+    let tac_list = gen_comp_unit ast in
     (* Printf.printf "==Original TAC==\n";
     print_tac tac_list;
 
     Printf.printf "==Original RISC-V Code==\n"; *)
-    (* let riscv_list = tac_to_riscv tac_list in
+    let riscv_list = tac_to_riscv tac_list in
     Printf.printf ".global main\n";
-    print_riscv (riscv_list); *)
+    print_riscv (riscv_list);
     (* ignore (riscv_list); *)
 
     (* let (cfg, _blk) = build_cfg tac_list in
