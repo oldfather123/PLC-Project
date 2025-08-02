@@ -53,7 +53,7 @@ let string_of_unop = function
 module SSAMap = Hashtbl
 let ssa_version () = Hashtbl.create 32
 
-
+(* 变量名-作用域类型-版本号-函数名 *)
 let ssa_var_name name ver scope_type =
   match scope_type with
   | `Block -> Printf.sprintf "%s-%s-%d-%s" name "Block" ver !current_func  
@@ -68,6 +68,7 @@ let get_ssa_name env name scope_type =
   with Not_found -> ssa_var_name name 0 scope_type
 
 (* 修改 inc_ssa_version 函数 *)
+(* 增加版本号并返回新的SSA名称 *)
 let inc_ssa_version env name scope_type =
   let v = try SSAMap.find env name with Not_found -> 0 in
   SSAMap.replace env name (v + 1);
@@ -115,11 +116,13 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
     | None -> 
         (* 如果在当前作用域中找不到，使用Control类型作为默认类型 *)
         get_ssa_name env id `Control)
-  | Number n ->
+  | Number n -> 
+    (* 生成临时变量 *)
       let t = new_temp () in
       code := !code @ [TacAssign (t, string_of_int n)];
       t
   | UnaryOp (op, e1) ->
+      (* 递归生成操作数的临时变量 *)
       let t1 = gen_expr e1 env code in
       let t = new_temp () in
       code := !code @ [TacUnOp (t, string_of_unop op, t1)];
@@ -130,7 +133,8 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
       let t = new_temp () in
       code := !code @ [TacBinOp (t, t1, string_of_binop op, t2)];
       t
-  | FunctionCall (fname, args) ->
+  | FunctionCall (fname, args) -> (* 函数调用 *)
+      (* 为所有参数生成临时变量 *)
       let arg_temps = List.map (fun a -> gen_expr a env code) args in
       List.iter (fun t -> code := !code @ [TacParam t]) (List.rev arg_temps);
       let t = new_temp () in
@@ -150,15 +154,15 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       Hashtbl.iter (fun k v -> Hashtbl.add env k v) old_env;
       pop_scope ();
   | EmptyStmt -> ()
-  | ExprStmt e -> ignore (gen_expr e env code)
+  | ExprStmt e -> ignore (gen_expr e env code) (* 表达式语句结果被丢弃 *)
   | Assignment (id, e) ->
       let t = gen_expr e env code in
       let scope_type = 
-        match !scope_kinds with
+        match !scope_kinds with (* 控制流结构则用Control *)
         | Block :: FBlock :: _ -> `Control
         | Block :: While :: _ | Block :: If :: _ -> `Control
         | Block :: Block :: _ -> 
-          if id <> "x" then `Block
+          if id <> "x" then `Block (* 特殊变量x的处理 *)
           else
             (match !x_type with
             | `Block :: _ -> `Block
@@ -169,7 +173,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       x_type := scope_type :: !x_type;
       (* Printf.printf "assignment of %s in assignment (%s, %s)\n" id id t;
       Printf.printf "x_type_list: %s\n" (String.concat ", " (List.map (function `Block -> "Block" | `Control -> "Control" | `FBlock -> "FBlock") !x_type)); *)
-      let ssa_id = inc_ssa_version env id scope_type in 
+      let ssa_id = inc_ssa_version env id scope_type in (* 增加版本号 *)
       (match !scope_stack with
       | current::_ -> Hashtbl.add current id ssa_id
       | [] -> failwith "No active scope");
@@ -215,16 +219,23 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
          gen_stmt else_s env_else code_else;
          code := !code @ !code_then @ !code_else;
          code := !code @ [TacLabel l_end];
-          let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_then [] in
+          (* 收集then和else分支出现过的所有变量名 *)
+          (* 先遍历then分支的环境，把所有变量名加入列表 *)
+          let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_then [] in 
+          (* 再遍历else分支环境，把else分支有但then分支没有的变量名也加入列表 *)
           let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_else vars in
           List.iter (fun var_name ->
+            (* 对每个变量，分别查找then和else分支的SSA版本号（如果分支里没有就用if之前的版本） *)
             let then_ver = try Hashtbl.find env_then var_name with Not_found -> Hashtbl.find env var_name in
             let else_ver = try Hashtbl.find env_else var_name with Not_found -> Hashtbl.find env var_name in
             let scope_type = get_current_scope_type !scope_stack in
+            (* 生成then和else分支的SSA变量名 *)
             let then_ssa = ssa_var_name var_name then_ver scope_type in
             let else_ssa = ssa_var_name var_name else_ver scope_type in
+            (* 计算合并后的新版本号（取较大版本+1），并更新到主环境env *)
             let merged_ver = max then_ver else_ver + 1 in
             Hashtbl.replace env var_name merged_ver;
+            (* 生成phi指令，把两个分支的SSA变量合并成新的SSA变量 *)
             let phi_name = ssa_var_name var_name merged_ver scope_type in
             code := !code @ [TacPhi (phi_name, then_ssa, else_ssa)]
           ) vars;
@@ -256,6 +267,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
         | _ -> ()
       in
       check_continue body;
+      (* 将循环结束标签压入 break 栈，方便 break 语句跳转 *)
       break_stack := l_end :: !break_stack;
     if (!has_continue = true) then begin
       let l_continue = while_new_label () in
@@ -272,6 +284,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       code := !code @ [TacLabel l_continue];
       code := !code @ [TacGoto l_cond]; 
       code := !code @ [TacLabel l_end];
+      (* 依次弹出 continue 和 break 栈 *)
       continue_stack := List.tl !continue_stack;
       break_stack := List.tl !break_stack
     end
@@ -308,8 +321,8 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           code := !code @ [TacReturn (Some t)])
 
 let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
-  current_func := name;
-  let env = ssa_version () in
+  current_func := name; (* 设置当前函数名 *)
+  let env = ssa_version () in  (* 创建新的SSA版本环境 *)
   push_scope FBlock;  (* 创建函数作用域 *)
   (* 处理函数参数 *)
   let param_names = List.map (function Param id -> 
@@ -321,12 +334,13 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
     | [] -> failwith "No active scope"
   ) params in
 
-  let t = new_temp () in
+  let t = new_temp () in 
+  (* 添加函数入口注释 *)
   let code = ref [TacComment (t, "function " ^ name, param_names)] in
   code := !code @ [TacLabel name];
   let env = ssa_version () in
-  gen_stmt body env code;
-  (match ret_ty, List.rev !code with
+  gen_stmt body env code; (* 递归生成函数体的TAC *)
+  (match ret_ty, List.rev !code with (* 检查是否需要补充TacReturn *)
    | Void, last::_ ->
       (match last with
        | TacReturn None -> ()
@@ -335,5 +349,6 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
    pop_scope ();  (* 弹出函数作用域 *)
   !code
 
+(* 以编译单元为入口，遍历所有函数 *)
 let gen_comp_unit (cu : comp_unit) : tac list =
   List.flatten (List.map gen_func cu)

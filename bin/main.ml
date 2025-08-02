@@ -2,7 +2,8 @@
 open Lib.Lexer
 open Lib.Parser
 open Lib.Transfer
-open Lib.Riscv_gen_new
+open Lib.Cfg_gen_new
+(* open Lib.Riscv_gen_new *)
 (* open Lib.Cfg_gen *)
 
 (* 打印AST的辅助函数 *)
@@ -82,7 +83,7 @@ let print_func_def = function
     Printf.printf "%s\n\n" (print_func_def func_def)
   ) comp_unit *)
 
-(* let parse_file filename =
+let parse_file filename =
   let ic = open_in filename in
   let lexbuf = Lexing.from_channel ic in
   Lexing.set_filename lexbuf filename;
@@ -98,7 +99,7 @@ let print_func_def = function
       pos.pos_fname
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
-    raise e *)
+    raise e
 
 let parse_stdin () =
   let lexbuf = Lexing.from_channel stdin in
@@ -134,7 +135,10 @@ let parse_stdin () =
        | _ -> Printf.printf "Program returned a function\n")
   | exception _ -> Printf.eprintf "No 'main' function found\n" *)
 
-(* let string_of_tac = function
+(* 转换Transfer.tac到Cfg_gen_new.tac *)
+(* 由于类型定义相同，现在直接使用接口函数 *)
+
+let string_of_transfer_tac (tac: Lib.Transfer.tac) = match tac with
   | TacAssign (a, b) -> Printf.sprintf "%s = %s" a b
   | TacBinOp (a, b, op, c) -> Printf.sprintf "%s = %s %s %s" a b op c
   | TacUnOp (a, op, b) -> Printf.sprintf "%s = %s %s" a op b
@@ -148,10 +152,10 @@ let parse_stdin () =
   | TacComment (_, s, _) -> "# " ^ s
   | TacPhi (p,t,e) -> Printf.sprintf "%s = phi(%s, %s)" p t e
 
-let print_tac tac_list =
-  List.iter (fun tac -> print_endline (string_of_tac tac)) tac_list *)
+let print_transfer_tac (tac_list : Lib.Transfer.tac list) =
+  List.iter (fun tac -> print_endline (string_of_transfer_tac tac)) tac_list
 
-let print_riscv_inst = function
+(* let print_riscv_inst = function
   | RAdd (rd, rs1, rs2) -> Printf.printf "add %s, %s, %s\n" rd rs1 rs2
   | RSub (rd, rs1, rs2) -> Printf.printf "sub %s, %s, %s\n" rd rs1 rs2
   | RMul (rd, rs1, rs2) -> Printf.printf "mul %s, %s, %s\n" rd rs1 rs2
@@ -179,10 +183,10 @@ let print_riscv_inst = function
   | RBlt (r1, r2, label) -> Printf.printf "blt %s, %s, %s\n" r1 r2 label
   | RBle (r1, r2, label) -> Printf.printf "ble %s, %s, %s\n" r1 r2 label
   | RBgt (r1, r2, label) -> Printf.printf "bgt %s, %s, %s\n" r1 r2 label
-  | RBge (r1, r2, label) -> Printf.printf "bge %s, %s, %s\n" r1 r2 label
+  | RBge (r1, r2, label) -> Printf.printf "bge %s, %s, %s\n" r1 r2 label *)
 
-let print_riscv riscv_list =
-  List.iter print_riscv_inst riscv_list
+(* let print_riscv riscv_list = 
+  List.iter print_riscv_inst riscv_list *)
 
 (* let print_cfg cfg =
   Hashtbl.iter (fun label block ->
@@ -194,22 +198,26 @@ let print_riscv riscv_list =
 let () =
   try
     let ast = 
-      (* if Array.length Sys.argv > 1 then
+      if Array.length Sys.argv > 1 then
         parse_file Sys.argv.(1)
-      else *)
+      else
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
     (* run_comp_unit ast; *)
     
     let tac_list = gen_comp_unit ast in
-    (* Printf.printf "==Original TAC==\n";
-    print_tac tac_list;
+    Printf.printf "=== Three Address Code ===\n";
+    print_transfer_tac tac_list;
+    
+    Printf.printf "\n=== Control Flow Graphs ===\n";
+    let cfgs = build_cfgs_from_transfer_tac tac_list in
+    List.iter print_cfg cfgs;
 
-    Printf.printf "==Original RISC-V Code==\n"; *)
-    let riscv_list = tac_to_riscv tac_list in
+    (* Printf.printf "==Original RISC-V Code==\n"; *)
+    (* let riscv_list = tac_to_riscv tac_list in
     Printf.printf ".global main\n";
-    print_riscv (riscv_list);
+    print_riscv (riscv_list); *)
     (* ignore (riscv_list); *)
 
     (* let (cfg, _blk) = build_cfg tac_list in
@@ -226,5 +234,4 @@ let () =
 
   with
   | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
-  | Lib.Lexer.LexError msg -> Printf.eprintf "Lexical error: %s\n" msg
   | e -> Printf.eprintf "Error: %s\n" (Printexc.to_string e)
