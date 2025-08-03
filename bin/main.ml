@@ -2,9 +2,8 @@
 open Lib.Lexer
 open Lib.Parser
 open Lib.Transfer
-open Lib.Cfg_gen_new
+(* open Lib.Cfg_gen_new *)
 (* open Lib.Riscv_gen_new *)
-(* open Lib.Cfg_gen *)
 
 (* 打印AST的辅助函数 *)
 (* let print_type_specifier = function
@@ -188,12 +187,6 @@ let print_transfer_tac (tac_list : Lib.Transfer.tac list) =
 (* let print_riscv riscv_list = 
   List.iter print_riscv_inst riscv_list *)
 
-(* let print_cfg cfg =
-  Hashtbl.iter (fun label block ->
-    Printf.printf "Block label: %s\n" label;
-    Printf.printf "  Successors: [%s]\n"
-      (String.concat "; " block.succs)
-  ) cfg *)
 
 let () =
   try
@@ -209,28 +202,35 @@ let () =
     let tac_list = gen_comp_unit ast in
     Printf.printf "=== Three Address Code ===\n";
     print_transfer_tac tac_list;
-    
-    Printf.printf "\n=== Control Flow Graphs ===\n";
-    let cfgs = build_cfgs_from_transfer_tac tac_list in
-    List.iter print_cfg cfgs;
 
-    (* Printf.printf "==Original RISC-V Code==\n"; *)
+(*  优化前后控制流图的打印
+    Printf.printf "\n=== Original Control Flow Graphs (Before Optimization) ===\n";
+    let original_cfgs = build_cfgs_from_transfer_tac tac_list in
+    List.iter (fun cfg -> 
+      Printf.printf "\n--- Function: %s (Original) ---\n" cfg.function_name;
+      print_cfg cfg
+    ) original_cfgs;
+    
+    Printf.printf "\n=== Optimized Control Flow Graphs (After Local Optimization) ===\n";
+    (* 先转换为内部类型，然后优化 *)
+    let converted_list = List.map (Obj.magic : Lib.Transfer.tac -> Lib.Cfg_gen_new.tac) tac_list in
+    let optimized_cfgs = build_cfgs_optimized converted_list in
+    List.iter (fun cfg -> 
+      Printf.printf "\n--- Function: %s (Optimized) ---\n" cfg.function_name;
+      print_cfg cfg
+    ) optimized_cfgs; *)
+
+    Printf.printf "\n=== Optimized Three Address Code ===\n";
+    let optimized_tac = Lib.Cfg_gen_new.optimize_transfer_tac tac_list in
+    print_transfer_tac optimized_tac;
+
+    (* Printf.printf "== RISC-V Code ==\n"; *)
     (* let riscv_list = tac_to_riscv tac_list in
     Printf.printf ".global main\n";
     print_riscv (riscv_list); *)
     (* ignore (riscv_list); *)
 
-    (* let (cfg, _blk) = build_cfg tac_list in
-    Printf.printf "==Original CFG==\n";
-    print_cfg cfg; *)
 
-    (* Printf.printf "==Optimized TAC==\n";
-    print_tac (Lib.Ssa_opt.optimize tac_list);
-
-    Printf.printf "==Optimized RISC-V Code==\n"; *)
-    (* let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
-    Printf.printf ".global main\n";
-    print_riscv (riscv_list); *)
 
   with
   | Parsing.Parse_error -> Printf.eprintf "Parse error\n"
