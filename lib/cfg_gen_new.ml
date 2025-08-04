@@ -562,6 +562,12 @@ module VariableVersioning = struct
     if same_base_var var1 var2 then
       if get_version var1 >= get_version var2 then var1 else var2
     else var1
+  
+  (* 比较两个变量的版本：返回正数表示var1较新，负数表示var2较新，0表示相同 *)
+  let compare_versions var1 var2 =
+    if same_base_var var1 var2 then
+      (get_version var1) - (get_version var2)
+    else 0
 end
 
 (* 优化环境 - 重新设计 *)
@@ -584,19 +590,38 @@ let create_opt_env () = {
 let is_ssa_variable var =
   String.contains var '-' && String.contains var 'C'
 
-(* 解析变量，但对SSA变量要谨慎处理 *)
+(* 智能的变量解析 - 平衡激进性和正确性 *)
 let resolve_variable env var =
-  if is_ssa_variable var then
-    var  (* SSA变量不进行复制传播，保持原样 *)
-  else
-    (* 首先检查复制传播 *)
-    let resolved = 
-      try Hashtbl.find env.copy_map var
-      with Not_found -> var
-    in
-    (* 然后检查常量传播 *)
-    try string_of_int (Hashtbl.find env.const_map resolved)
-    with Not_found -> resolved
+  let rec resolve_recursive var visited =
+    if List.mem var visited then var  (* 避免循环引用 *)
+    else
+      let visited' = var :: visited in
+      (* 对于SSA变量，要更加谨慎 *)
+      if is_ssa_variable var then (
+        (* 首先检查常量传播 *)
+        (try 
+          string_of_int (Hashtbl.find env.const_map var)
+        with Not_found ->
+          (* 对SSA变量的复制传播要谨慎，只在简单情况下进行 *)
+          try 
+            let next_var = Hashtbl.find env.copy_map var in
+            if next_var = var then var  (* 避免自引用 *)
+            else if is_ssa_variable next_var then var  (* 避免SSA间的复杂传播 *)
+            else resolve_recursive next_var visited'
+          with Not_found -> var)
+      ) else (
+        (* 对非SSA变量可以积极传播 *)
+        (try 
+          string_of_int (Hashtbl.find env.const_map var)
+        with Not_found ->
+          try 
+            let next_var = Hashtbl.find env.copy_map var in
+            if next_var = var then var  (* 避免自引用 *)
+            else resolve_recursive next_var visited'
+          with Not_found -> var)
+      )
+  in
+  resolve_recursive var []
 
 (* 计算二元操作 *)
 let fold_binary_op op left right =
@@ -629,25 +654,23 @@ let fold_unary_op op operand =
     | _ -> None
   with _ -> None
 
-(* 改进的优化指令函数 - 重新启用复制传播和CSE *)
+(* 平衡的优化指令函数 - 在激进优化和正确性之间取得平衡 *)
 let optimize_instruction_improved env instr =
   match instr with
   | TacAssign (dest, src) ->
       let resolved_src = resolve_variable env src in
-      (* 常量传播 *)
+      (* 如果源已经是个常量，进行常量传播 *)
       (try
         let const_val = int_of_string resolved_src in
-        if not (is_ssa_variable dest) then
-          Hashtbl.replace env.const_map dest const_val;
+        (* 对所有变量都进行常量传播 *)
+        Hashtbl.replace env.const_map dest const_val;
         TacAssign (dest, resolved_src)
       with _ ->
-        (* 复制传播 - 改进处理SSA变量 *)
+        (* 复制传播 - 对SSA变量要谨慎 *)
         if resolved_src <> src then (
-          if not (is_ssa_variable dest) then
+          if not (is_ssa_variable dest) || not (is_ssa_variable resolved_src) then (
             Hashtbl.replace env.copy_map dest resolved_src
-          else
-            (* 对于SSA变量，也可以进行复制传播，但要谨慎 *)
-            Hashtbl.replace env.copy_map dest resolved_src
+          )
         );
         TacAssign (dest, resolved_src))
   
@@ -655,23 +678,22 @@ let optimize_instruction_improved env instr =
       let resolved_left = resolve_variable env left in
       let resolved_right = resolve_variable env right in
       
-      (* 尝试常量折叠 *)
+      (* 激进的常量折叠 *)
       (match fold_binary_op op resolved_left resolved_right with
       | Some result ->
           (try
             let const_val = int_of_string result in
-            if not (is_ssa_variable dest) then
-              Hashtbl.replace env.const_map dest const_val
+            (* 对所有变量都进行常量传播 *)
+            Hashtbl.replace env.const_map dest const_val
           with _ -> ());
           TacAssign (dest, result)
       | None ->
-          (* 创建表达式键用于CSE *)
+          (* 激进的公共子表达式消除 *)
           let expr_key = resolved_left ^ " " ^ op ^ " " ^ resolved_right in
           (try
             let existing_var = Hashtbl.find env.expr_map expr_key in
-            (* 复制传播：使用已有的表达式结果 *)
-            if not (is_ssa_variable dest) then
-              Hashtbl.replace env.copy_map dest existing_var;
+            (* 直接用已有变量替换，对所有变量类型都适用 *)
+            Hashtbl.replace env.copy_map dest existing_var;
             TacAssign (dest, existing_var)
           with Not_found ->
             Hashtbl.replace env.expr_map expr_key dest;
@@ -705,7 +727,7 @@ let optimize_instruction_improved env instr =
   
   | _ -> instr  (* 其他指令保持不变 *)
 
-(* 改进的指令优化 *)
+(* 激进的多轮指令优化 - 深度传播和简化 *)
 let optimize_instructions_improved instrs =
   let env = create_opt_env () in
   let optimized = ref [] in
@@ -715,13 +737,136 @@ let optimize_instructions_improved instrs =
     optimized := opt_instr :: !optimized
   ) instrs;
   
-  List.rev !optimized
+  let first_pass = List.rev !optimized in
+  
+  (* 第二轮：表达式内联和链式替换 *)
+  let perform_aggressive_inlining instructions =
+    let substitutions = Hashtbl.create 32 in
+    
+    (* 收集所有简单赋值，建立替换表 *)
+    List.iter (function
+      | TacAssign (dest, src) when not (String.contains src '+' || String.contains src '*' || String.contains src '-') ->
+          Hashtbl.replace substitutions dest src
+      | _ -> ()
+    ) instructions;
+    
+    (* 递归替换 *)
+    let rec substitute var =
+      try
+        let replacement = Hashtbl.find substitutions var in
+        if replacement = var then var
+        else substitute replacement
+      with Not_found -> var
+    in
+    
+    (* 应用替换并过滤冗余赋值 *)
+    let result = ref [] in
+    List.iter (function
+      | TacAssign (dest, src) ->
+          let final_src = substitute src in
+          if dest <> final_src then  (* 避免自赋值 *)
+            result := TacAssign (dest, final_src) :: !result
+      | TacBinOp (dest, left, op, right) ->
+          let final_left = substitute left in
+          let final_right = substitute right in
+          result := TacBinOp (dest, final_left, op, final_right) :: !result
+      | TacUnOp (dest, op, operand) ->
+          let final_operand = substitute operand in
+          result := TacUnOp (dest, op, final_operand) :: !result
+      | TacReturn (Some operand) ->
+          let final_operand = substitute operand in
+          result := TacReturn (Some final_operand) :: !result
+      | TacParam operand ->
+          let final_operand = substitute operand in
+          result := TacParam final_operand :: !result
+      | TacIfGoto (cond, label) ->
+          let final_cond = substitute cond in
+          result := TacIfGoto (final_cond, label) :: !result
+      | other -> result := other :: !result
+    ) instructions;
+    
+    List.rev !result
+  in
+  
+  let inlined = perform_aggressive_inlining first_pass in
+  
+  (* 第三轮：简化表达式合并 - 只做简单的变量替换 *)
+  let perform_expression_merging instructions =
+    let simple_assigns = Hashtbl.create 32 in
+    
+    (* 收集简单赋值 *)
+    List.iter (function
+      | TacAssign (dest, src) when not (String.contains src '+' || String.contains src '*') ->
+          Hashtbl.replace simple_assigns dest src
+      | _ -> ()
+    ) instructions;
+    
+    (* 生成优化后的指令，替换变量 *)
+    let result = ref [] in
+    
+    List.iter (function
+      | TacBinOp (dest, left, op, right) ->
+          let final_left = 
+            if Hashtbl.mem simple_assigns left then
+              Hashtbl.find simple_assigns left
+            else left
+          in
+          let final_right = 
+            if Hashtbl.mem simple_assigns right then
+              Hashtbl.find simple_assigns right
+            else right
+          in
+          result := TacBinOp (dest, final_left, op, final_right) :: !result
+      | TacAssign (_, src) when Hashtbl.mem simple_assigns src ->
+          (* 跳过冗余的简单赋值 *)
+          ()
+      | other -> result := other :: !result
+    ) instructions;
+    
+    List.rev !result
+  in
+  
+  let merged = perform_expression_merging inlined in
+  
+  (* 第四轮：再次进行常量传播 *)
+  let env4 = create_opt_env () in
+  let fourth_optimized = ref [] in
+  
+  List.iter (fun instr ->
+    let opt_instr = optimize_instruction_improved env4 instr in
+    fourth_optimized := opt_instr :: !fourth_optimized
+  ) merged;
+  
+  List.rev !fourth_optimized
 
-(* 改进的死代码消除 - 正确处理SSA变量依赖 *)
+(* 超激进的死代码消除 - 专门针对线性代码优化 *)
 let remove_dead_code_improved instructions =
   let used = Hashtbl.create 32 in
+  let ssa_vars = Hashtbl.create 32 in
+  let assignments = Hashtbl.create 32 in
+  let has_control_flow = ref false in
   
-  (* 首先标记所有一定需要的变量 *)
+  (* 检查是否包含控制流指令 *)
+  List.iter (function
+    | TacIfGoto _ | TacGoto _ | TacLabel _ -> has_control_flow := true
+    | _ -> ()
+  ) instructions;
+  
+  (* 收集所有SSA变量的版本信息 *)
+  List.iter (function
+    | TacAssign (dest, _) | TacBinOp (dest, _, _, _) | TacUnOp (dest, _, _) -> 
+        if is_ssa_variable dest then (
+          let base_name = VariableVersioning.get_base_name dest in
+          let versions = try Hashtbl.find ssa_vars base_name with Not_found -> [] in
+          Hashtbl.replace ssa_vars base_name (dest :: versions);
+          Hashtbl.replace assignments dest true
+        ) else (
+          Hashtbl.replace assignments dest true
+        )
+    | _ -> ()
+  ) instructions;
+  
+  (* 标记直接使用的变量（return、param、条件等） *)
   List.iter (function
     | TacReturn (Some src) -> Hashtbl.replace used src true
     | TacParam src -> Hashtbl.replace used src true
@@ -730,8 +875,76 @@ let remove_dead_code_improved instructions =
     | _ -> ()
   ) instructions;
   
-  (* 对于SSA变量，如果某个版本被使用，则需要标记所有可能产生这个版本的赋值 *)
-  let mark_ssa_dependencies () =
+  (* 智能SSA变量分析：区分必要和非必要的SSA赋值 *)
+  let preserve_ssa_definitions () =
+    if !has_control_flow then (
+      (* 有控制流时：分析哪些SSA变量真正被后续使用 *)
+      
+      (* 首先标记return中使用的变量 *)
+      List.iter (function
+        | TacReturn (Some var) when is_ssa_variable var ->
+            Hashtbl.replace used var true
+        | TacReturn (Some var) -> Hashtbl.replace used var true
+        | _ -> ()
+      ) instructions;
+      
+      (* 然后进行反向依赖分析 *)
+      let rec mark_dependencies var =
+        if not (Hashtbl.mem used var) then (
+          Hashtbl.replace used var true;
+          (* 查找定义这个变量的指令 *)
+          List.iter (function
+            | TacAssign (dest, src) when dest = var ->
+                mark_dependencies src
+            | TacBinOp (dest, src1, _, src2) when dest = var ->
+                mark_dependencies src1; mark_dependencies src2
+            | TacUnOp (dest, _, src) when dest = var ->
+                mark_dependencies src
+            | _ -> ()
+          ) instructions
+        )
+      in
+      
+      (* 标记所有被使用变量的依赖链 *)
+      List.iter (function
+        | TacReturn (Some var) -> mark_dependencies var
+        | TacParam var -> mark_dependencies var
+        | TacIfGoto (cond, _) -> mark_dependencies cond
+        | TacCall (_, _, _, args) -> List.iter mark_dependencies args
+        | _ -> ()
+      ) instructions;
+      
+      (* 对于SSA变量，我们需要特别保护那些可能在不同控制流路径中被使用的版本 *)
+      List.iter (function
+        | TacAssign (dest, _) when is_ssa_variable dest ->
+            (* 检查这个SSA变量是否在后续被引用 *)
+            let is_referenced = List.exists (function
+              | TacReturn (Some var) when var = dest -> true
+              | TacAssign (_, src) when src = dest -> true
+              | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
+              | TacUnOp (_, _, src) when src = dest -> true
+              | TacParam src when src = dest -> true
+              | TacIfGoto (cond, _) when cond = dest -> true
+              | TacCall (_, _, _, args) when List.mem dest args -> true
+              | _ -> false
+            ) instructions in
+            if is_referenced || Hashtbl.mem used dest then
+              Hashtbl.replace used dest true
+        | _ -> ()
+      ) instructions
+    ) else (
+      (* 线性代码时只保留真正被return使用的变量 *)
+      List.iter (function
+        | TacReturn (Some var) -> Hashtbl.replace used var true
+        | _ -> ()
+      ) instructions
+    )
+  in
+  
+  preserve_ssa_definitions ();
+  
+  (* 传播依赖关系 *)
+  let mark_dependencies () =
     let changed = ref true in
     while !changed do
       changed := false;
@@ -757,97 +970,104 @@ let remove_dead_code_improved instructions =
               Hashtbl.replace used src true;
               changed := true
             )
-        | TacCall (dest, _, _, args) -> 
-            if Hashtbl.mem used dest then
-              List.iter (fun arg -> 
-                if not (Hashtbl.mem used arg) then (
-                  Hashtbl.replace used arg true;
-                  changed := true
-                )
-              ) args
         | _ -> ()
       ) instructions
     done
   in
   
-  mark_ssa_dependencies ();
+  mark_dependencies ();
   
-  (* 对于SSA变量，如果return使用了某个基础变量，我们需要保留所有对该变量的赋值 *)
-  let preserve_ssa_chains () =
+  (* 额外步骤：确保所有被使用的临时变量的定义都被标记 *)
+  let mark_temp_var_definitions () =
     List.iter (function
-      | TacReturn (Some var) when is_ssa_variable var ->
-          let base_name = VariableVersioning.get_base_name var in
-          (* 标记所有对同一基础变量的赋值 *)
+      | TacAssign (_, src) when Hashtbl.mem used src ->
           List.iter (function
-            | TacAssign (dest, _) when is_ssa_variable dest ->
-                let dest_base = VariableVersioning.get_base_name dest in
-                if dest_base = base_name then
-                  Hashtbl.replace used dest true
-            | TacBinOp (dest, _, _, _) when is_ssa_variable dest ->
-                let dest_base = VariableVersioning.get_base_name dest in
-                if dest_base = base_name then
-                  Hashtbl.replace used dest true
-            | TacUnOp (dest, _, _) when is_ssa_variable dest ->
-                let dest_base = VariableVersioning.get_base_name dest in
-                if dest_base = base_name then
-                  Hashtbl.replace used dest true
+            | TacBinOp (dest, _, _, _) when dest = src -> Hashtbl.replace used dest true
+            | TacUnOp (dest, _, _) when dest = src -> Hashtbl.replace used dest true
+            | TacAssign (dest, _) when dest = src -> Hashtbl.replace used dest true
             | _ -> ()
           ) instructions
-      | TacReturn (Some var) -> 
-          (* 对于非SSA变量，也要标记为使用 *)
-          Hashtbl.replace used var true
-      | _ -> ()
-    ) instructions;
-    
-    (* 额外保护：标记所有SSA变量赋值，确保控制流正确性 *)
-    List.iter (function
-      | TacAssign (dest, _) when is_ssa_variable dest ->
-          Hashtbl.replace used dest true
       | _ -> ()
     ) instructions
   in
   
-  preserve_ssa_chains ();
-  mark_ssa_dependencies ();  (* 再次传播依赖 *)
+  mark_temp_var_definitions ();
+  mark_dependencies ();
   
-  (* 过滤未使用的指令，但要保留所有被引用的定义 *)
+  (* 智能过滤：线性代码更激进，复杂控制流保守 *)
   List.filter (function
     | TacAssign (dest, _) -> 
-        (try let _ = int_of_string dest in false (* 常量赋值删除 *)
-         with _ -> 
-           (* 检查是否是临时变量且未被使用 *)
-           if String.length dest > 0 && dest.[0] = 't' then (
-             try 
-               let _ = int_of_string (String.sub dest 1 (String.length dest - 1)) in
-               Hashtbl.mem used dest  (* 只有在被使用时才保留临时变量 *)
-             with _ -> Hashtbl.mem used dest
-           ) else
-             Hashtbl.mem used dest)
+        if !has_control_flow then (
+          (* 有控制流时：保留被使用的变量或SSA变量的关键赋值 *)
+          Hashtbl.mem used dest || 
+          (is_ssa_variable dest && (
+            Hashtbl.mem used dest ||
+            List.exists (function
+              | TacReturn (Some var) when var = dest -> true
+              | TacAssign (_, src) when src = dest -> true
+              | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
+              | TacUnOp (_, _, src) when src = dest -> true
+              | TacParam src when src = dest -> true
+              | TacIfGoto (cond, _) when cond = dest -> true
+              | TacCall (_, _, _, args) when List.mem dest args -> true
+              | _ -> false
+            ) instructions
+          ))
+        ) else (
+          (* 线性代码时激进 *)
+          Hashtbl.mem used dest
+        )
     | TacBinOp (dest, _, _, _) -> 
-        (try let _ = int_of_string dest in false
-         with _ -> 
-           (* 检查是否是临时变量且未被使用 *)
-           if String.length dest > 0 && dest.[0] = 't' then (
-             try 
-               let _ = int_of_string (String.sub dest 1 (String.length dest - 1)) in
-               Hashtbl.mem used dest  (* 只有在被使用时才保留临时变量 *)
-             with _ -> Hashtbl.mem used dest
-           ) else
-             Hashtbl.mem used dest)
+        if !has_control_flow then (
+          (* 有控制流时：保留被使用的变量或SSA变量的关键赋值 *)
+          Hashtbl.mem used dest ||
+          (is_ssa_variable dest && (
+            Hashtbl.mem used dest ||
+            List.exists (function
+              | TacReturn (Some var) when var = dest -> true
+              | TacAssign (_, src) when src = dest -> true
+              | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
+              | TacUnOp (_, _, src) when src = dest -> true
+              | TacParam src when src = dest -> true
+              | TacIfGoto (cond, _) when cond = dest -> true
+              | TacCall (_, _, _, args) when List.mem dest args -> true
+              | _ -> false
+            ) instructions
+          )) ||
+          (List.exists (function
+            | TacAssign (_, src) when src = dest -> true
+            | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
+            | TacUnOp (_, _, src) when src = dest -> true
+            | TacReturn (Some src) when src = dest -> true
+            | TacParam src when src = dest -> true
+            | TacIfGoto (cond, _) when cond = dest -> true
+            | _ -> false
+          ) instructions)
+        ) else (
+          (* 线性代码时激进 *)
+          Hashtbl.mem used dest ||
+          (List.exists (function
+            | TacAssign (_, src) when src = dest -> true
+            | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
+            | TacUnOp (_, _, src) when src = dest -> true
+            | TacReturn (Some src) when src = dest -> true
+            | TacParam src when src = dest -> true
+            | _ -> false
+          ) instructions)
+        )
     | TacUnOp (dest, _, _) -> 
-        (try let _ = int_of_string dest in false
-         with _ -> 
-           (* 检查是否是临时变量且未被使用 *)
-           if String.length dest > 0 && dest.[0] = 't' then (
-             try 
-               let _ = int_of_string (String.sub dest 1 (String.length dest - 1)) in
-               Hashtbl.mem used dest  (* 只有在被使用时才保留临时变量 *)
-             with _ -> Hashtbl.mem used dest
-           ) else
-             Hashtbl.mem used dest)
-    | TacCall (dest, _, _, _) -> 
-        (try let _ = int_of_string dest in false
-         with _ -> Hashtbl.mem used dest)
+        Hashtbl.mem used dest ||
+        (List.exists (function
+          | TacAssign (_, src) when src = dest -> true
+          | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
+          | TacUnOp (_, _, src) when src = dest -> true
+          | TacReturn (Some src) when src = dest -> true
+          | TacParam src when src = dest -> true
+          | TacIfGoto (cond, _) when cond = dest -> true
+          | _ -> false
+        ) instructions)
+    | TacCall (_, _, _, _) -> 
+        true  (* 函数调用保留 *)
     | _ -> true (* 保留控制流指令 *)
   ) instructions
 
@@ -903,7 +1123,7 @@ let find_latest_version version_map var_name =
 (* 优化基本块 - 添加SSA版本跟踪 *)
 let optimize_basic_block_with_ssa_tracking block =
   (* 先执行常规优化 *)
-  let optimized_instructions = optimize_instructions_iterative block.instructions 3 in
+  let optimized_instructions = optimize_instructions_iterative block.instructions 6 in
   
   (* 然后跟踪SSA版本并修复return语句 *)
   let version_map = track_ssa_versions optimized_instructions in
@@ -942,7 +1162,7 @@ let optimize_cfg cfg =
   
   (* 首先进行常规的基本块优化 *)
   Hashtbl.iter (fun block_id block ->
-    let optimized_instructions = optimize_instructions_iterative block.instructions 3 in
+    let optimized_instructions = optimize_instructions_iterative block.instructions 6 in
     let dead_code_removed = remove_dead_code_improved optimized_instructions in
     let optimized_block = { block with instructions = dead_code_removed } in
     Hashtbl.add optimized_blocks block_id optimized_block
