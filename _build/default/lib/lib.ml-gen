@@ -3,6 +3,9 @@
 (** @canonical Lib.Ast *)
 module Ast = Lib__Ast
 
+(** @canonical Lib.Cfg_gen *)
+module Cfg_gen = Lib__Cfg_gen
+
 (** @canonical Lib.Cfg_gen_new *)
 module Cfg_gen_new = Lib__Cfg_gen_new
 
@@ -14,6 +17,9 @@ module Interpreter = Lib__Interpreter
 
 (** @canonical Lib.Lexer *)
 module Lexer = Lib__Lexer
+
+(** @canonical Lib.Optimize *)
+module Optimize = Lib__Optimize
 
 (** @canonical Lib.Parser *)
 module Parser = Lib__Parser

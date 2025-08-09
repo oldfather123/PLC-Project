@@ -3,7 +3,8 @@ open Lib.Lexer
 open Lib.Parser
 open Lib.Transfer
 open Lib.Riscv_gen_new
-(* open Lib.Cfg_gen *)
+(* open Lib.Cfg_gen
+open Lib.Optimize *)
 
 (* 打印AST的辅助函数 *)
 (* let print_type_specifier = function
@@ -82,7 +83,7 @@ let print_func_def = function
     Printf.printf "%s\n\n" (print_func_def func_def)
   ) comp_unit *)
 
-let parse_file filename =
+(* let parse_file filename =
   let ic = open_in filename in
   let lexbuf = Lexing.from_channel ic in
   Lexing.set_filename lexbuf filename;
@@ -98,7 +99,7 @@ let parse_file filename =
       pos.pos_fname
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
-    raise e
+    raise e *)
 
 let parse_stdin () =
   let lexbuf = Lexing.from_channel stdin in
@@ -194,9 +195,9 @@ let print_riscv riscv_list =
 let () =
   try
     let ast = 
-      if Array.length Sys.argv > 1 then
+      (* if Array.length Sys.argv > 1 then
         parse_file Sys.argv.(1)
-      else
+      else *)
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
@@ -217,9 +218,9 @@ let () =
     print_cfg cfg; *)
 
     (* Printf.printf "==Optimized TAC==\n";
-    print_tac (Lib.Ssa_opt.optimize tac_list);
+    print_tac (optimize tac_list); *)
 
-    Printf.printf "==Optimized RISC-V Code==\n"; *)
+    (* Printf.printf "==Optimized RISC-V Code==\n"; *)
     (* let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
     Printf.printf ".global main\n";
     print_riscv (riscv_list); *)

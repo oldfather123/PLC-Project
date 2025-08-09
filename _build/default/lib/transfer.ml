@@ -65,11 +65,13 @@ let get_ssa_name env name scope_type =
   try
     let v = SSAMap.find env name in
     ssa_var_name name v scope_type
-  with Not_found -> ssa_var_name name 0 scope_type
+  with Not_found -> 
+    ssa_var_name name 0 scope_type
 
 (* 修改 inc_ssa_version 函数 *)
 let inc_ssa_version env name scope_type =
-  let v = try SSAMap.find env name with Not_found -> 0 in
+  let v = try SSAMap.find env name 
+  with Not_found -> 0 in
   SSAMap.replace env name (v + 1);
   ssa_var_name name (v + 1) scope_type
 
@@ -111,10 +113,13 @@ let rec gen_expr (e : expression) (env : (string, int) Hashtbl.t)  (code : tac l
   | Identifier id -> 
     (* 查找变量最近的定义 *)
     (match lookup_var id !scope_stack with
-    | Some v -> v  (* 如果找到了变量的定义，直接使用它的SSA名称 *)
+    | Some v -> 
+      v  (* 如果找到了变量的定义，直接使用它的SSA名称 *)
     | None -> 
         (* 如果在当前作用域中找不到，使用Control类型作为默认类型 *)
-        get_ssa_name env id `Control)
+        let ssa_name = get_ssa_name env id `Control
+        in
+        ssa_name)
   | Number n ->
       let t = new_temp () in
       code := !code @ [TacAssign (t, string_of_int n)];
@@ -313,7 +318,7 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
   push_scope FBlock;  (* 创建函数作用域 *)
   (* 处理函数参数 *)
   let param_names = List.map (function Param id -> 
-    let ssa_id = get_ssa_name env id `Control in  (* 使用Control类型 *)
+    let ssa_id = inc_ssa_version env id `Control in
     match !scope_stack with
     | current::_ -> 
         Hashtbl.add current id ssa_id;  (* 添加到当前作用域 *)
@@ -324,7 +329,7 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
   let t = new_temp () in
   let code = ref [TacComment (t, "function " ^ name, param_names)] in
   code := !code @ [TacLabel name];
-  let env = ssa_version () in
+  (* let env = ssa_version () in *)
   gen_stmt body env code;
   (match ret_ty, List.rev !code with
    | Void, last::_ ->

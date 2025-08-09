@@ -18,13 +18,13 @@ int control_structures(int n) {
             n = n - 5;
         }
     }
-    // while (n > 1) {
-    //     n = n - 1;
-    //     if (n == 3) {
-    //         n = 0;
-    //         continue;
-    //     }
-    // }
+    while (n > 1) {
+        n = n - 1;
+        if (n == 3) {
+            n = 0;
+            continue;
+        }
+    }
     return n;
 }
 int main () {
