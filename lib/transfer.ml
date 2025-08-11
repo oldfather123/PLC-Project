@@ -148,11 +148,28 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
   match s with
   | Block stmts -> 
       push_scope Block;  (* 创建新作用域 *)
-      let old_env = Hashtbl.copy env in  (* 保存旧环境 *)
+      let old_env = Hashtbl.copy env in  (* 保存旧环境（进入块前的版本） *)
       List.iter (fun st -> gen_stmt st env code) stmts;
-      (* 恢复旧环境并弹出作用域 *)
+      (* 仅把对已存在变量的版本更新向外传播；块内新声明的变量不外泄 *)
+      let merged_env = Hashtbl.copy old_env in
+      (* 对于块内与外层同名的变量，若版本提升，则保留提升后的版本 *)
+      Hashtbl.iter (fun k v_in_block ->
+        if Hashtbl.mem old_env k then Hashtbl.replace merged_env k v_in_block
+      ) env;
+      (* 用合并结果覆盖当前 env *)
       Hashtbl.clear env;
-      Hashtbl.iter (fun k v -> Hashtbl.add env k v) old_env;
+      Hashtbl.iter (fun k v -> Hashtbl.add env k v) merged_env;
+      (* 同步父作用域中的 SSA 名称映射（如果存在） *)
+      (match !scope_stack with
+       | _::parent::_ ->
+           Hashtbl.iter (fun k v ->
+             if Hashtbl.mem old_env k then (
+               let scope_type = if k = "x" then get_current_scope_type !scope_stack else `Control in
+               let ssa_id = ssa_var_name k v scope_type in
+               Hashtbl.replace parent k ssa_id
+             )
+           ) env
+       | _ -> ());
       pop_scope ();
   | EmptyStmt -> ()
   | ExprStmt e -> ignore (gen_expr e env code)
@@ -160,6 +177,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let t = gen_expr e env code in
       let scope_type = 
         match !scope_kinds with
+  | Block :: Block :: If :: _ -> `Control
         | Block :: FBlock :: _ -> `Control
         | Block :: While :: _ | Block :: If :: _ -> `Control
         | Block :: Block :: _ -> 
@@ -211,13 +229,19 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           code := !code @ [TacLabel l_then];
          let env_then = Hashtbl.copy env in
          let code_then = ref [] in
+         (* 隔离 then 分支的 SSA 名映射，避免影响 else *)
+         push_scope Block;
          gen_stmt then_s env_then code_then;
+         pop_scope ();
          code_then := !code_then @ [TacGoto l_end];
          (* Hashtbl.iter (fun k v -> Hashtbl.replace env k v) env_then; *)
          let env_else = Hashtbl.copy env in
          let code_else = ref [] in
          code_else := !code_else @ [TacLabel l_else];
+         (* 隔离 else 分支的 SSA 名映射，避免与 then 互相污染 *)
+         push_scope Block;
          gen_stmt else_s env_else code_else;
+         pop_scope ();
          code := !code @ !code_then @ !code_else;
          code := !code @ [TacLabel l_end];
           let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_then [] in
@@ -225,20 +249,45 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
           List.iter (fun var_name ->
             let then_ver = try Hashtbl.find env_then var_name with Not_found -> Hashtbl.find env var_name in
             let else_ver = try Hashtbl.find env_else var_name with Not_found -> Hashtbl.find env var_name in
-            let scope_type = get_current_scope_type !scope_stack in
+            let scope_type = `Control in
             let then_ssa = ssa_var_name var_name then_ver scope_type in
             let else_ssa = ssa_var_name var_name else_ver scope_type in
             let merged_ver = max then_ver else_ver + 1 in
             Hashtbl.replace env var_name merged_ver;
             let phi_name = ssa_var_name var_name merged_ver scope_type in
-            code := !code @ [TacPhi (phi_name, then_ssa, else_ssa)]
+            code := !code @ [TacPhi (phi_name, then_ssa, else_ssa)];
+            (* 将合并后的 SSA 名字写回到父作用域映射，确保后续 Identifier 使用到最新版本 *)
+            (match !scope_stack with
+             | _::parent::_ -> Hashtbl.replace parent var_name phi_name
+             | _ -> ())
           ) vars;
           pop_scope();  
       | None ->
         let l_end = if_new_label () in
         code := !code @ [TacIfGoto (cond_not_t, l_end)];
+        (* 记录进入 then 前的环境版本 *)
+        let env_before = Hashtbl.copy env in
+        (* 直接在当前 env 中生成 then 代码，确保赋值出现在TAC中 *)
         gen_stmt then_s env code;
         code := !code @ [TacLabel l_end];
+        (* 仅对进入前就存在的变量做合并，避免新声明外泄 *)
+        let vars = Hashtbl.fold (fun k _ acc -> if List.mem k acc then acc else k::acc) env_before [] in
+        List.iter (fun var_name ->
+          let else_ver = Hashtbl.find env_before var_name in
+          let then_ver = try Hashtbl.find env var_name with Not_found -> else_ver in
+          if then_ver <> else_ver then (
+            let scope_type = `Control in
+            let then_ssa = ssa_var_name var_name then_ver scope_type in
+            let else_ssa = ssa_var_name var_name else_ver scope_type in
+            let merged_ver = max then_ver else_ver + 1 in
+            Hashtbl.replace env var_name merged_ver;
+            let phi_name = ssa_var_name var_name merged_ver scope_type in
+            code := !code @ [TacPhi (phi_name, then_ssa, else_ssa)];
+            (match !scope_stack with
+             | _::parent::_ -> Hashtbl.replace parent var_name phi_name
+             | _ -> ())
+          )
+        ) vars;
         pop_scope();)
    | WhileStmt (cond, body) ->
       push_scope While;
