@@ -199,7 +199,7 @@ let () =
     let opt = ref false in
     let ast = 
       if Array.length Sys.argv > 1 then
-        if Sys.argv.(1) = "opt" then 
+        if Sys.argv.(1) = "-opt" then 
           (opt := true;
           (* parse_file Sys.argv.(2)) *)
           parse_stdin ())
