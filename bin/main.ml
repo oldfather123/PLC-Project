@@ -3,10 +3,9 @@ open Lib.Lexer
 open Lib.Parser
 open Lib.Transfer
 open Lib.Transfer_opt
-open Lib.Riscv_gen_new
 (* open Lib.Tacdef *)
-(* open Lib.Cfg_gen
-open Lib.Optimize *)
+(* open Lib.Cfg_gen_new *)
+open Lib.Riscv_gen_new 
 
 (* 打印AST的辅助函数 *)
 (* let print_type_specifier = function
@@ -220,7 +219,11 @@ let () =
     (* Printf.printf "==Original TAC==\n";
     print_tac tac_list;
 
-    Printf.printf "==Original RISC-V Code==\n"; *)
+    Printf.printf "\n=== Optimized TAC ===\n";
+    let optimized_tac = Lib.Cfg_gen_new.optimize_transfer_tac tac_list in
+    print_tac optimized_tac; *)
+
+    Printf.printf "==Original RISC-V Code==\n";
     let riscv_list = tac_to_riscv tac_list in
     Printf.printf ".global main\n";
     print_riscv (riscv_list);
@@ -230,8 +233,7 @@ let () =
     Printf.printf "==Original CFG==\n";
     print_cfg cfg; *)
 
-    (* Printf.printf "==Optimized TAC==\n";
-    print_tac (optimize tac_list); *)
+    
 
     (* Printf.printf "==Optimized RISC-V Code==\n"; *)
     (* let riscv_list = tac_to_riscv (Lib.Ssa_opt.optimize tac_list) in
