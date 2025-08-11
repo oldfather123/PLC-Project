@@ -1,5 +1,5 @@
-open Transfer
 open Cfg_gen
+open Tacdef
 
 
 (* 常量和变量值的类型 *)

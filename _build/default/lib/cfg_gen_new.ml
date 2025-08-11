@@ -526,6 +526,7 @@ let build_cfgs_from_transfer_tac transfer_tac_list =
 module VariableVersioning = struct
   type var_info = {
     base_name: string;      (* 基础变量名，如 "n" *)
+    kind: string;           (* 名称种类：Control 或 Block *)
     version: int;           (* 版本号 *)
     scope: string;          (* 作用域，如 "control_structures" *)
   }
@@ -535,9 +536,9 @@ module VariableVersioning = struct
     try
       let parts = String.split_on_char '-' var_name in
       match parts with
-      | [base; "Control"; version_str; scope] ->
+      | [base; kind; version_str; scope] when (kind = "Control" || kind = "Block") ->
           let version = int_of_string version_str in
-          Some { base_name = base; version = version; scope = scope }
+          Some { base_name = base; kind; version = version; scope = scope }
       | _ -> None
     with _ -> None
   
@@ -588,7 +589,9 @@ let create_opt_env () = {
 
 (* 检查是否是SSA变量（包含Control的变量不进行复制传播） *)
 let is_ssa_variable var =
-  String.contains var '-' && String.contains var 'C'
+  match VariableVersioning.parse_ssa_var var with
+  | Some _ -> true
+  | None -> false
 
 (* 智能的变量解析 - 平衡激进性和正确性 *)
 let resolve_variable env var =
@@ -725,6 +728,17 @@ let optimize_instruction_improved env instr =
       let resolved_args = List.map (resolve_variable env) args in
       TacCall (dest, func, argc, resolved_args)
   
+  | TacPhi (dest, src1, src2) ->
+      (* 对 phi 的两个输入做解析；若两端等价，降级为赋值，便于后续传播与DCE保留 *)
+      let r1 = resolve_variable env src1 in
+      let r2 = resolve_variable env src2 in
+      if r1 = r2 then (
+        (* 记录复制传播，便于后续替换 *)
+        Hashtbl.replace env.copy_map dest r1;
+        TacAssign (dest, r1)
+      ) else
+        TacPhi (dest, r1, r2)
+
   | _ -> instr  (* 其他指令保持不变 *)
 
 (* 激进的多轮指令优化 - 深度传播和简化 *)
@@ -745,7 +759,7 @@ let optimize_instructions_improved instrs =
     
     (* 收集所有简单赋值，建立替换表 *)
     List.iter (function
-      | TacAssign (dest, src) when not (String.contains src '+' || String.contains src '*' || String.contains src '-') ->
+      | TacAssign (dest, src) when (not (is_ssa_variable dest)) && (not (String.contains src '+' || String.contains src '*' || String.contains src '-')) ->
           Hashtbl.replace substitutions dest src
       | _ -> ()
     ) instructions;
@@ -773,6 +787,7 @@ let optimize_instructions_improved instrs =
       | TacUnOp (dest, op, operand) ->
           let final_operand = substitute operand in
           result := TacUnOp (dest, op, final_operand) :: !result
+  | TacPhi _ as other -> result := other :: !result
       | TacReturn (Some operand) ->
           let final_operand = substitute operand in
           result := TacReturn (Some final_operand) :: !result
@@ -817,9 +832,10 @@ let optimize_instructions_improved instrs =
             else right
           in
           result := TacBinOp (dest, final_left, op, final_right) :: !result
-      | TacAssign (_, src) when Hashtbl.mem simple_assigns src ->
-          (* 跳过冗余的简单赋值 *)
-          ()
+    | TacAssign (dest, src) when Hashtbl.mem simple_assigns src && not (is_ssa_variable dest) ->
+      (* 跳过冗余的简单赋值，但保留 SSA 目标的赋值以维持定义点 *)
+      ()
+  | TacPhi _ as other -> result := other :: !result
       | other -> result := other :: !result
     ) instructions;
     
@@ -827,6 +843,61 @@ let optimize_instructions_improved instrs =
   in
   
   let merged = perform_expression_merging inlined in
+
+  (* 第三点五轮：SSA 前向重命名——在同一线性序列内，优先使用最近定义的 SSA 版本 *)
+  let ssa_forward_rename instructions =
+  let current_map = Hashtbl.create 32 in
+  let rewrite_var v =
+    match VariableVersioning.parse_ssa_var v with
+    | Some {base_name; kind; scope; _} ->
+      let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
+      (try Hashtbl.find current_map key with Not_found -> v)
+    | None -> v
+  in
+  let update_def dest =
+    match VariableVersioning.parse_ssa_var dest with
+    | Some {base_name; kind; scope; _} ->
+      let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
+      Hashtbl.replace current_map key dest
+    | None -> ()
+  in
+  let result = ref [] in
+  List.iter (function
+    | TacAssign (dest, src) ->
+      let src' = rewrite_var src in
+      update_def dest;
+      result := TacAssign (dest, src') :: !result
+    | TacBinOp (dest, l, op, r) ->
+      let l' = rewrite_var l in
+      let r' = rewrite_var r in
+      update_def dest;
+      result := TacBinOp (dest, l', op, r') :: !result
+    | TacUnOp (dest, op, src) ->
+      let src' = rewrite_var src in
+      update_def dest;
+      result := TacUnOp (dest, op, src') :: !result
+    | TacIfGoto (cond, label) ->
+      let cond' = rewrite_var cond in
+      result := TacIfGoto (cond', label) :: !result
+    | TacParam v ->
+      let v' = rewrite_var v in
+      result := TacParam v' :: !result
+    | TacReturn (Some v) ->
+      let v' = rewrite_var v in
+      result := TacReturn (Some v') :: !result
+    | TacCall (dest, f, argc, args) ->
+      let args' = List.map rewrite_var args in
+      update_def dest;
+      result := TacCall (dest, f, argc, args') :: !result
+    | TacPhi (dest, s1, s2) ->
+      (* 不改写 phi 输入，保持控制流语义；但记录目的为当前版本 *)
+      update_def dest;
+      result := TacPhi (dest, s1, s2) :: !result
+    | other -> result := other :: !result
+  ) instructions;
+  List.rev !result
+  in
+  let renamed = ssa_forward_rename merged in
   
   (* 第四轮：再次进行常量传播 *)
   let env4 = create_opt_env () in
@@ -835,16 +906,18 @@ let optimize_instructions_improved instrs =
   List.iter (fun instr ->
     let opt_instr = optimize_instruction_improved env4 instr in
     fourth_optimized := opt_instr :: !fourth_optimized
-  ) merged;
+  ) renamed;
   
   List.rev !fourth_optimized
 
-(* 超激进的死代码消除 - 专门针对线性代码优化 *)
-let remove_dead_code_improved instructions =
+(* 超激进的死代码消除 - 专门针对线性代码优化；支持全局使用集以避免跨块误删 *)
+let remove_dead_code_improved ?global_used instructions =
   let used = Hashtbl.create 32 in
   let ssa_vars = Hashtbl.create 32 in
   let assignments = Hashtbl.create 32 in
   let has_control_flow = ref false in
+  (* 收集所有 phi 输入，用于保护其定义不被删除 *)
+  let phi_inputs = Hashtbl.create 32 in
   
   (* 检查是否包含控制流指令 *)
   List.iter (function
@@ -854,7 +927,7 @@ let remove_dead_code_improved instructions =
   
   (* 收集所有SSA变量的版本信息 *)
   List.iter (function
-    | TacAssign (dest, _) | TacBinOp (dest, _, _, _) | TacUnOp (dest, _, _) -> 
+  | TacAssign (dest, _) | TacBinOp (dest, _, _, _) | TacUnOp (dest, _, _) | TacPhi (dest, _, _) -> 
         if is_ssa_variable dest then (
           let base_name = VariableVersioning.get_base_name dest in
           let versions = try Hashtbl.find ssa_vars base_name with Not_found -> [] in
@@ -871,9 +944,20 @@ let remove_dead_code_improved instructions =
     | TacReturn (Some src) -> Hashtbl.replace used src true
     | TacParam src -> Hashtbl.replace used src true
     | TacIfGoto (cond, _) -> Hashtbl.replace used cond true
+  | TacPhi (_dest, src1, src2) ->
+    (* phi 的两个输入在活性上等价于被使用 *)
+    Hashtbl.replace used src1 true;
+    Hashtbl.replace used src2 true;
+    Hashtbl.replace phi_inputs src1 true;
+    Hashtbl.replace phi_inputs src2 true
     | TacCall (_, _, _, args) -> List.iter (fun arg -> Hashtbl.replace used arg true) args
     | _ -> ()
   ) instructions;
+
+  (* 并入全局使用集，作为依赖传播的起点 *)
+  (match global_used with
+  | Some g -> Hashtbl.iter (fun v _ -> Hashtbl.replace used v true) g
+  | None -> ());
   
   (* 智能SSA变量分析：区分必要和非必要的SSA赋值 *)
   let preserve_ssa_definitions () =
@@ -970,6 +1054,17 @@ let remove_dead_code_improved instructions =
               Hashtbl.replace used src true;
               changed := true
             )
+        | TacPhi (dest, src1, src2) ->
+            if Hashtbl.mem used dest then (
+              if not (Hashtbl.mem used src1) then (
+                Hashtbl.replace used src1 true;
+                changed := true
+              );
+              if not (Hashtbl.mem used src2) then (
+                Hashtbl.replace used src2 true;
+                changed := true
+              )
+            )
         | _ -> ()
       ) instructions
     done
@@ -998,25 +1093,19 @@ let remove_dead_code_improved instructions =
   List.filter (function
     | TacAssign (dest, _) -> 
         if !has_control_flow then (
-          (* 有控制流时：保留被使用的变量或SSA变量的关键赋值 *)
-          Hashtbl.mem used dest || 
-          (is_ssa_variable dest && (
-            Hashtbl.mem used dest ||
-            List.exists (function
-              | TacReturn (Some var) when var = dest -> true
-              | TacAssign (_, src) when src = dest -> true
-              | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
-              | TacUnOp (_, _, src) when src = dest -> true
-              | TacParam src when src = dest -> true
-              | TacIfGoto (cond, _) when cond = dest -> true
-              | TacCall (_, _, _, args) when List.mem dest args -> true
-              | _ -> false
-            ) instructions
-          ))
+          (* 有控制流：保守保留所有 SSA 赋值，避免跨块引用被误删；非SSA按使用判断 *)
+          if is_ssa_variable dest then true
+          else (Hashtbl.mem used dest || Hashtbl.mem phi_inputs dest)
         ) else (
-          (* 线性代码时激进 *)
-          Hashtbl.mem used dest
+          (* 线性块：仅保留本地或全局被使用的赋值；SSA 也只在使用时保留 *)
+          if is_ssa_variable dest then (
+            Hashtbl.mem used dest ||
+            (match global_used with Some g -> Hashtbl.mem g dest | None -> false)
+          ) else Hashtbl.mem used dest
         )
+  | TacPhi (dest, _, _) ->
+    (* 有控制流时：只要目的被使用，就保留 phi；线性代码很少出现 phi，统一按被使用保留 *)
+    Hashtbl.mem used dest
     | TacBinOp (dest, _, _, _) -> 
         if !has_control_flow then (
           (* 有控制流时：保留被使用的变量或SSA变量的关键赋值 *)
@@ -1044,7 +1133,12 @@ let remove_dead_code_improved instructions =
             | _ -> false
           ) instructions)
         ) else (
-          (* 线性代码时激进 *)
+          (* 线性代码：仅在本地或全局使用时保留；支持 SSA *)
+          Hashtbl.mem used dest ||
+          (match global_used with Some g -> Hashtbl.mem g dest | None -> false)
+        )
+    | TacUnOp (dest, _, _) -> 
+        if !has_control_flow then (
           Hashtbl.mem used dest ||
           (List.exists (function
             | TacAssign (_, src) when src = dest -> true
@@ -1052,20 +1146,13 @@ let remove_dead_code_improved instructions =
             | TacUnOp (_, _, src) when src = dest -> true
             | TacReturn (Some src) when src = dest -> true
             | TacParam src when src = dest -> true
+            | TacIfGoto (cond, _) when cond = dest -> true
             | _ -> false
           ) instructions)
+        ) else (
+          Hashtbl.mem used dest ||
+          (match global_used with Some g -> Hashtbl.mem g dest | None -> false)
         )
-    | TacUnOp (dest, _, _) -> 
-        Hashtbl.mem used dest ||
-        (List.exists (function
-          | TacAssign (_, src) when src = dest -> true
-          | TacBinOp (_, src1, _, src2) when src1 = dest || src2 = dest -> true
-          | TacUnOp (_, _, src) when src = dest -> true
-          | TacReturn (Some src) when src = dest -> true
-          | TacParam src when src = dest -> true
-          | TacIfGoto (cond, _) when cond = dest -> true
-          | _ -> false
-        ) instructions)
     | TacCall (_, _, _, _) -> 
         true  (* 函数调用保留 *)
     | _ -> true (* 保留控制流指令 *)
@@ -1088,15 +1175,15 @@ let optimize_instructions_iterative instrs max_iterations =
   
   optimize_until_convergence instrs 0
 
-(* 在基本块中跟踪SSA变量的最新版本 *)
+(* 在基本块中跟踪SSA变量的最新版本（区分 Control/Block） *)
 let track_ssa_versions instructions =
   let version_map = Hashtbl.create 32 in
   
   List.iter (function
     | TacAssign (dest, _) ->
-        (match VariableVersioning.parse_ssa_var dest with
-         | Some {base_name; scope; version} ->
-             let key = base_name ^ "-" ^ scope in
+    (match VariableVersioning.parse_ssa_var dest with
+     | Some {base_name; kind; scope; version} ->
+       let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
              (try
                let current_version = Hashtbl.find version_map key in
                if version > current_version then
@@ -1112,11 +1199,11 @@ let track_ssa_versions instructions =
 (* 找到变量的最新版本 *)
 let find_latest_version version_map var_name =
   match VariableVersioning.parse_ssa_var var_name with
-  | Some {base_name; scope; _} ->
-      let key = base_name ^ "-" ^ scope in
+  | Some {base_name; kind; scope; _} ->
+      let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
       (try
         let latest_version = Hashtbl.find version_map key in
-        base_name ^ "-Control-" ^ (string_of_int latest_version) ^ "-" ^ scope
+        base_name ^ "-" ^ kind ^ "-" ^ (string_of_int latest_version) ^ "-" ^ scope
       with Not_found -> var_name)
   | None -> var_name
 
@@ -1158,58 +1245,28 @@ let cfg_to_tac_instructions_correct cfg =
 
 (* 优化整个CFG - 添加全局SSA版本跟踪 *)
 let optimize_cfg cfg =
+  (* 先为整个函数收集全局使用集，避免跨块引用的定义被误删 *)
+  let global_used = Hashtbl.create 64 in
+  Hashtbl.iter (fun _ block ->
+    List.iter (function
+      | TacReturn (Some v) -> Hashtbl.replace global_used v true
+      | TacIfGoto (cond, _) -> Hashtbl.replace global_used cond true
+      | TacParam v -> Hashtbl.replace global_used v true
+      | TacCall (_, _, _, args) -> List.iter (fun a -> Hashtbl.replace global_used a true) args
+      | TacPhi (_d, s1, s2) -> Hashtbl.replace global_used s1 true; Hashtbl.replace global_used s2 true
+      | _ -> ()
+    ) block.instructions
+  ) cfg.blocks;
+
   let optimized_blocks = Hashtbl.create (Hashtbl.length cfg.blocks) in
-  
-  (* 首先进行常规的基本块优化 *)
   Hashtbl.iter (fun block_id block ->
     let optimized_instructions = optimize_instructions_iterative block.instructions 6 in
-    let dead_code_removed = remove_dead_code_improved optimized_instructions in
+    let dead_code_removed = remove_dead_code_improved ~global_used optimized_instructions in
     let optimized_block = { block with instructions = dead_code_removed } in
     Hashtbl.add optimized_blocks block_id optimized_block
   ) cfg.blocks;
   
-  (* 然后进行全局SSA版本跟踪 *)
-  let global_version_map = Hashtbl.create 32 in
-  
-  (* 收集所有SSA变量的最新版本 *)
-  Hashtbl.iter (fun _ block ->
-    List.iter (function
-      | TacAssign (dest, _) ->
-          (match VariableVersioning.parse_ssa_var dest with
-           | Some {base_name; scope; version} ->
-               let key = base_name ^ "-" ^ scope in
-               (try
-                 let current_version = Hashtbl.find global_version_map key in
-                 if version > current_version then
-                   Hashtbl.replace global_version_map key version
-               with Not_found ->
-                 Hashtbl.add global_version_map key version)
-           | None -> ())
-      | _ -> ()
-    ) block.instructions
-  ) optimized_blocks;
-  
-  (* 修复所有return语句 *)
-  let final_blocks = Hashtbl.create (Hashtbl.length optimized_blocks) in
-  Hashtbl.iter (fun block_id block ->
-    let fixed_instructions = List.map (function
-      | TacReturn (Some operand) ->
-          (match VariableVersioning.parse_ssa_var operand with
-           | Some {base_name; scope; _} ->
-               let key = base_name ^ "-" ^ scope in
-               (try
-                 let latest_version = Hashtbl.find global_version_map key in
-                 let latest_var = base_name ^ "-Control-" ^ (string_of_int latest_version) ^ "-" ^ scope in
-                 TacReturn (Some latest_var)
-               with Not_found -> TacReturn (Some operand))
-           | None -> TacReturn (Some operand))
-      | instr -> instr
-    ) block.instructions in
-    let final_block = { block with instructions = fixed_instructions } in
-    Hashtbl.add final_blocks block_id final_block
-  ) optimized_blocks;
-  
-  { cfg with blocks = final_blocks }
+  { cfg with blocks = optimized_blocks }
 
 (* 构建并优化CFG *)
 let build_cfg_optimized function_name instructions =

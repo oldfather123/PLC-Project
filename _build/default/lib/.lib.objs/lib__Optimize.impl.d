@@ -1,1 +1,1 @@
-lib/optimize.ml: Cfg_gen List Map String Transfer
+lib/optimize.ml: Cfg_gen List Map String Tacdef

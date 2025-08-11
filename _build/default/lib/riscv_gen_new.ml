@@ -1,4 +1,4 @@
-open Transfer
+open Tacdef
 
 (* RISC-V 指令类型 *)
 type riscv_inst =
