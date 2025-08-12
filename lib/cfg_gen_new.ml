@@ -1253,51 +1253,8 @@ let optimize_cfg cfg =
     Hashtbl.add optimized_blocks block_id optimized_block
   ) cfg.blocks;
   
-  (* 然后进行全局SSA版本跟踪 *)
-  let global_version_map = Hashtbl.create 32 in
-  
-  (* 收集所有SSA变量的最新版本 *)
-  Hashtbl.iter (fun _ block ->
-    List.iter (function
-      | TacAssign (dest, _)
-      | TacBinOp (dest, _, _, _)
-      | TacUnOp (dest, _, _)
-      | TacPhi (dest, _, _) ->
-          (match VariableVersioning.parse_ssa_var dest with
-           | Some {base_name; scope; version} ->
-               let key = base_name ^ "-" ^ scope in
-               (try
-                 let current_version = Hashtbl.find global_version_map key in
-                 if version > current_version then
-                   Hashtbl.replace global_version_map key version
-               with Not_found ->
-                 Hashtbl.add global_version_map key version)
-           | None -> ())
-      | _ -> ()
-    ) block.instructions
-  ) optimized_blocks;
-  
-  (* 修复所有return语句 *)
-  let final_blocks = Hashtbl.create (Hashtbl.length optimized_blocks) in
-  Hashtbl.iter (fun block_id block ->
-    let fixed_instructions = List.map (function
-      | TacReturn (Some operand) ->
-          (match VariableVersioning.parse_ssa_var operand with
-           | Some {base_name; scope; _} ->
-               let key = base_name ^ "-" ^ scope in
-               (try
-                 let latest_version = Hashtbl.find global_version_map key in
-                 let latest_var = base_name ^ "-Control-" ^ (string_of_int latest_version) ^ "-" ^ scope in
-                 TacReturn (Some latest_var)
-               with Not_found -> TacReturn (Some operand))
-           | None -> TacReturn (Some operand))
-      | instr -> instr
-    ) block.instructions in
-    let final_block = { block with instructions = fixed_instructions } in
-    Hashtbl.add final_blocks block_id final_block
-  ) optimized_blocks;
-  
-  { cfg with blocks = final_blocks }
+  (* 不重写 return 的操作数，保持原始语义 *)
+  { cfg with blocks = optimized_blocks }
 
 (* 构建并优化CFG *)
 let build_cfg_optimized function_name instructions =
