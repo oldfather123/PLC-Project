@@ -379,6 +379,5 @@ let gen_func (FuncDef (ret_ty, name, params, body)) : tac list =
    pop_scope ();  (* 弹出函数作用域 *)
   !code
 
-(* 提供给 main.ml 使用的优化入口名，保持与调用端一致 *)
 let gen_comp_unit_opt (cu : comp_unit) : tac list =
   List.flatten (List.map gen_func cu)

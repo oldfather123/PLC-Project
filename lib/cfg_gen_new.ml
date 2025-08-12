@@ -1,10 +1,6 @@
 (* CFG生成模块 - 用于将三地址码划分为基本块和控制流图 *)
 open Tacdef
 
-type identifier = string
-
-type tac = Tacdef.tac
-
 (* 基本块的数据结构 *)
 type basic_block = {
   id: int;
@@ -504,11 +500,8 @@ let build_cfgs_from_functions (tac_list: tac list) : cfg list =
   List.rev !cfgs
 
 (* 提供给外部调用的接口函数，处理Transfer.tac类型 *)
-let build_cfgs_from_transfer_tac transfer_tac_list =
-  (* 这里我们需要一个转换函数，但由于类型相同，实际上可以直接使用 *)
-  (* 为了类型安全，我们使用Obj.magic进行转换，因为两个tac类型定义完全相同 *)
-  let converted_list = List.map (Obj.magic : 'a -> tac) transfer_tac_list in
-  build_cfgs_from_functions converted_list
+let build_cfgs_from_transfer_tac (transfer_tac_list: tac list) =
+  build_cfgs_from_functions transfer_tac_list
 
 (* ==================== 重新设计的优化模块 ==================== *)
 
@@ -1253,8 +1246,51 @@ let optimize_cfg cfg =
     Hashtbl.add optimized_blocks block_id optimized_block
   ) cfg.blocks;
   
-  (* 不重写 return 的操作数，保持原始语义 *)
-  { cfg with blocks = optimized_blocks }
+  (* 然后进行全局SSA版本跟踪 *)
+  let global_version_map = Hashtbl.create 32 in
+  
+  (* 收集所有SSA变量的最新版本 *)
+  Hashtbl.iter (fun _ block ->
+    List.iter (function
+      | TacAssign (dest, _)
+      | TacBinOp (dest, _, _, _)
+      | TacUnOp (dest, _, _)
+      | TacPhi (dest, _, _) ->
+          (match VariableVersioning.parse_ssa_var dest with
+           | Some {base_name; scope; version} ->
+               let key = base_name ^ "-" ^ scope in
+               (try
+                 let current_version = Hashtbl.find global_version_map key in
+                 if version > current_version then
+                   Hashtbl.replace global_version_map key version
+               with Not_found ->
+                 Hashtbl.add global_version_map key version)
+           | None -> ())
+      | _ -> ()
+    ) block.instructions
+  ) optimized_blocks;
+  
+  (* 修复所有return语句 *)
+  let final_blocks = Hashtbl.create (Hashtbl.length optimized_blocks) in
+  Hashtbl.iter (fun block_id block ->
+    let fixed_instructions = List.map (function
+      | TacReturn (Some operand) ->
+          (match VariableVersioning.parse_ssa_var operand with
+           | Some {base_name; scope; _} ->
+               let key = base_name ^ "-" ^ scope in
+               (try
+                 let latest_version = Hashtbl.find global_version_map key in
+                 let latest_var = base_name ^ "-Control-" ^ (string_of_int latest_version) ^ "-" ^ scope in
+                 TacReturn (Some latest_var)
+               with Not_found -> TacReturn (Some operand))
+           | None -> TacReturn (Some operand))
+      | instr -> instr
+    ) block.instructions in
+    let final_block = { block with instructions = fixed_instructions } in
+    Hashtbl.add final_blocks block_id final_block
+  ) optimized_blocks;
+  
+  { cfg with blocks = final_blocks }
 
 (* 构建并优化CFG *)
 let build_cfg_optimized function_name instructions =
@@ -1280,18 +1316,9 @@ let cfgs_to_tac_instructions cfgs =
   ) [] cfgs
 
 (* 主要对外接口：从Transfer.tac优化到optimized TAC *)
-let optimize_transfer_tac (transfer_tac_list: 'a list) : 'a list =
-  (* 转换为内部TAC类型 *)
-  let converted_list = List.map (Obj.magic : 'a -> tac) transfer_tac_list in
-  
-  (* 构建并优化CFG *)
-  let optimized_cfgs = build_cfgs_optimized converted_list in
-  
-  (* 转换回TAC指令序列 *)
-  let optimized_instructions = cfgs_to_tac_instructions optimized_cfgs in
-  
-  (* 转换回Transfer.tac类型 *)
-  List.map (Obj.magic : tac -> 'a) optimized_instructions
+let optimize_transfer_tac (transfer_tac_list: tac list) : tac list =
+  let optimized_cfgs = build_cfgs_optimized transfer_tac_list in
+  cfgs_to_tac_instructions optimized_cfgs
 
 (* 打印基本块信息（调试用） *)
 let print_basic_block (block: basic_block) : unit =
