@@ -3,7 +3,7 @@ open Lib.Lexer
 open Lib.Parser
 open Lib.Transfer
 open Lib.Transfer_opt
-(* open Lib.Tacdef *)
+open Lib.Tacdef
 (* open Lib.Cfg_gen_new *)
 open Lib.Riscv_gen_new 
 
@@ -72,11 +72,11 @@ let rec print_statement indent = function
 
 let print_func_def = function
   | FuncDef (ts, name, params, body) ->
-      let param_strs = List.map print_param params in
-      Printf.sprintf "%s %s(%s)\n%s" 
-        (print_type_specifier ts) name (String.concat ", " param_strs)
-        (print_statement "" body) *)
-
+          let tac_list =
+            if not !opt then
+              Lib.Transfer.gen_comp_unit ast
+            else
+              Lib.Transfer_opt.gen_comp_unit_opt ast*)
 (* let print_comp_unit comp_unit =
   Printf.printf "=== ToyC Program AST ===\n\n";
   List.iteri (fun i func_def ->
@@ -223,9 +223,9 @@ let () =
     let optimized_tac = Lib.Cfg_gen_new.optimize_transfer_tac tac_list in
     print_tac optimized_tac; *)
 
-    Printf.printf "==Original RISC-V Code==\n";
+    (* Printf.printf "==Original RISC-V Code==\n"; *)
     let riscv_list = tac_to_riscv tac_list in
-    Printf.printf ".global main\n";
+    (* Printf.printf ".global main\n"; *)
     print_riscv (riscv_list);
     (* ignore (riscv_list); *)
 

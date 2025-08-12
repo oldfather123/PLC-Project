@@ -1,19 +1,9 @@
 (* CFG生成模块 - 用于将三地址码划分为基本块和控制流图 *)
+open Tacdef
 
 type identifier = string
 
-type tac =
-  | TacAssign of string * string
-  | TacBinOp of string * string * string * string
-  | TacUnOp of string * string * string
-  | TacLabel of string
-  | TacGoto of string
-  | TacIfGoto of string * string
-  | TacParam of string
-  | TacCall of string * string * int * string list
-  | TacReturn of string option
-  | TacComment of string * string * identifier list
-  | TacPhi of string * string * string
+type tac = Tacdef.tac
 
 (* 基本块的数据结构 *)
 type basic_block = {
@@ -526,7 +516,6 @@ let build_cfgs_from_transfer_tac transfer_tac_list =
 module VariableVersioning = struct
   type var_info = {
     base_name: string;      (* 基础变量名，如 "n" *)
-    kind: string;           (* 名称种类：Control 或 Block *)
     version: int;           (* 版本号 *)
     scope: string;          (* 作用域，如 "control_structures" *)
   }
@@ -536,9 +525,9 @@ module VariableVersioning = struct
     try
       let parts = String.split_on_char '-' var_name in
       match parts with
-      | [base; kind; version_str; scope] when (kind = "Control" || kind = "Block") ->
+      | [base; "Control"; version_str; scope] ->
           let version = int_of_string version_str in
-          Some { base_name = base; kind; version = version; scope = scope }
+          Some { base_name = base; version = version; scope = scope }
       | _ -> None
     with _ -> None
   
@@ -589,9 +578,7 @@ let create_opt_env () = {
 
 (* 检查是否是SSA变量（包含Control的变量不进行复制传播） *)
 let is_ssa_variable var =
-  match VariableVersioning.parse_ssa_var var with
-  | Some _ -> true
-  | None -> false
+  String.contains var '-' && String.contains var 'C'
 
 (* 智能的变量解析 - 平衡激进性和正确性 *)
 let resolve_variable env var =
@@ -849,15 +836,15 @@ let optimize_instructions_improved instrs =
   let current_map = Hashtbl.create 32 in
   let rewrite_var v =
     match VariableVersioning.parse_ssa_var v with
-    | Some {base_name; kind; scope; _} ->
-      let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
+    | Some {base_name; scope; _} ->
+      let key = base_name ^ "-" ^ scope in
       (try Hashtbl.find current_map key with Not_found -> v)
     | None -> v
   in
   let update_def dest =
     match VariableVersioning.parse_ssa_var dest with
-    | Some {base_name; kind; scope; _} ->
-      let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
+    | Some {base_name; scope; _} ->
+      let key = base_name ^ "-" ^ scope in
       Hashtbl.replace current_map key dest
     | None -> ()
   in
@@ -1175,15 +1162,15 @@ let optimize_instructions_iterative instrs max_iterations =
   
   optimize_until_convergence instrs 0
 
-(* 在基本块中跟踪SSA变量的最新版本（区分 Control/Block） *)
+(* 在基本块中跟踪SSA变量的最新版本 *)
 let track_ssa_versions instructions =
   let version_map = Hashtbl.create 32 in
   
   List.iter (function
     | TacAssign (dest, _) ->
-    (match VariableVersioning.parse_ssa_var dest with
-     | Some {base_name; kind; scope; version} ->
-       let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
+        (match VariableVersioning.parse_ssa_var dest with
+         | Some {base_name; scope; version} ->
+             let key = base_name ^ "-" ^ scope in
              (try
                let current_version = Hashtbl.find version_map key in
                if version > current_version then
@@ -1199,11 +1186,11 @@ let track_ssa_versions instructions =
 (* 找到变量的最新版本 *)
 let find_latest_version version_map var_name =
   match VariableVersioning.parse_ssa_var var_name with
-  | Some {base_name; kind; scope; _} ->
-      let key = base_name ^ "-" ^ kind ^ "-" ^ scope in
+  | Some {base_name; scope; _} ->
+      let key = base_name ^ "-" ^ scope in
       (try
         let latest_version = Hashtbl.find version_map key in
-        base_name ^ "-" ^ kind ^ "-" ^ (string_of_int latest_version) ^ "-" ^ scope
+        base_name ^ "-Control-" ^ (string_of_int latest_version) ^ "-" ^ scope
       with Not_found -> var_name)
   | None -> var_name
 
@@ -1266,7 +1253,51 @@ let optimize_cfg cfg =
     Hashtbl.add optimized_blocks block_id optimized_block
   ) cfg.blocks;
   
-  { cfg with blocks = optimized_blocks }
+  (* 然后进行全局SSA版本跟踪 *)
+  let global_version_map = Hashtbl.create 32 in
+  
+  (* 收集所有SSA变量的最新版本 *)
+  Hashtbl.iter (fun _ block ->
+    List.iter (function
+      | TacAssign (dest, _)
+      | TacBinOp (dest, _, _, _)
+      | TacUnOp (dest, _, _)
+      | TacPhi (dest, _, _) ->
+          (match VariableVersioning.parse_ssa_var dest with
+           | Some {base_name; scope; version} ->
+               let key = base_name ^ "-" ^ scope in
+               (try
+                 let current_version = Hashtbl.find global_version_map key in
+                 if version > current_version then
+                   Hashtbl.replace global_version_map key version
+               with Not_found ->
+                 Hashtbl.add global_version_map key version)
+           | None -> ())
+      | _ -> ()
+    ) block.instructions
+  ) optimized_blocks;
+  
+  (* 修复所有return语句 *)
+  let final_blocks = Hashtbl.create (Hashtbl.length optimized_blocks) in
+  Hashtbl.iter (fun block_id block ->
+    let fixed_instructions = List.map (function
+      | TacReturn (Some operand) ->
+          (match VariableVersioning.parse_ssa_var operand with
+           | Some {base_name; scope; _} ->
+               let key = base_name ^ "-" ^ scope in
+               (try
+                 let latest_version = Hashtbl.find global_version_map key in
+                 let latest_var = base_name ^ "-Control-" ^ (string_of_int latest_version) ^ "-" ^ scope in
+                 TacReturn (Some latest_var)
+               with Not_found -> TacReturn (Some operand))
+           | None -> TacReturn (Some operand))
+      | instr -> instr
+    ) block.instructions in
+    let final_block = { block with instructions = fixed_instructions } in
+    Hashtbl.add final_blocks block_id final_block
+  ) optimized_blocks;
+  
+  { cfg with blocks = final_blocks }
 
 (* 构建并优化CFG *)
 let build_cfg_optimized function_name instructions =
