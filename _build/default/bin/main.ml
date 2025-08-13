@@ -83,7 +83,7 @@ let print_func_def = function
     Printf.printf "%s\n\n" (print_func_def func_def)
   ) comp_unit *)
 
-(* let parse_file filename =
+let parse_file filename =
   let ic = open_in filename in
   let lexbuf = Lexing.from_channel ic in
   Lexing.set_filename lexbuf filename;
@@ -99,7 +99,7 @@ let print_func_def = function
       pos.pos_fname
       pos.pos_lnum 
       (pos.pos_cnum - pos.pos_bol + 1);
-    raise e *)
+    raise e
 
 let parse_stdin () =
   let lexbuf = Lexing.from_channel stdin in
@@ -196,47 +196,48 @@ let () =
   try
     let opt = ref false in
     let ast = 
-      (* if Array.length Sys.argv > 1 then
+      if Array.length Sys.argv > 1 then
         if Sys.argv.(1) = "-opt" then 
           (opt := true;
-          parse_file Sys.argv.(2))
-          (* parse_stdin ()) *)
+          (* parse_file Sys.argv.(2) *)
+          parse_stdin ())
         else
         parse_file Sys.argv.(1)
-      else *)
+      else
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
     (* run_comp_unit ast; *)
-    (* let tac_lst = 
+    let tac_lst = 
       gen_comp_unit ast
     in 
-    Printf.printf "==Original TAC==\n";
-    print_tac tac_lst;
+    (* Printf.printf "==Original TAC==\n";
+    print_tac tac_lst; *)
 
     let tac_lst_opt = 
       gen_comp_unit_opt ast
-    in 
+    in
+    (* in 
     Printf.printf "\n\n\n=== Optimized TAC ===\n";
     print_tac (Lib.Cfg_gen_new.optimize_transfer_tac tac_lst_opt); *)
 
-    let tac_list = 
+    (* let tac_list = 
       if !opt = false then
       gen_comp_unit ast
       else 
       gen_comp_unit_opt ast
-    in
+    in *)
     (* Printf.printf "==Original TAC==\n";
-    print_tac tac_list;
+    print_tac tac_list; *)
 
-    Printf.printf "\n=== Optimized TAC ===\n";
-    let optimized_tac = Lib.Cfg_gen_new.optimize_transfer_tac tac_list in
-    print_tac optimized_tac;
+    (* Printf.printf "\n=== Optimized TAC ===\n"; *)
+    let optimized_tac = Lib.Cfg_gen_new.optimize_transfer_tac tac_lst_opt in
+    (* print_tac optimized_tac; *)
 
-    let tac = if !opt then optimized_tac else tac_list in *)
+    let tac = if !opt then optimized_tac else tac_lst in
 
     (* Printf.printf "==Original RISC-V Code==\n"; *)
-    let riscv_list = tac_to_riscv tac_list in
+    let riscv_list = tac_to_riscv tac in
     Printf.printf ".global main\n";
     print_riscv (riscv_list);
     (* ignore (riscv_list); *)
