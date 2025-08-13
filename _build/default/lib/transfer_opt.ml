@@ -167,7 +167,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
         match !scope_kinds with
   | Block :: Block :: If :: _ -> `Control
         | Block :: FBlock :: _ -> `Control
-        | Block :: While :: _ -> `Block
+        | Block :: While :: _ -> `Control  (* while循环中的Block内赋值应该是Control类型 *)
         | Block :: If :: _ -> `Control
         | Block :: Block :: _ -> 
           if id <> "x" then `Block
@@ -191,7 +191,7 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       let scope_type = 
       match !scope_kinds with
   | Block :: FBlock :: _ -> `Control
-  | Block :: While :: _ -> `Block
+  | Block :: While :: _ -> `Block  (* 恢复原来的逻辑 *)
   | Block :: If :: _ -> `Control
       | Block :: Block :: _ -> `Block
       | _ -> 
@@ -301,6 +301,10 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       in
       check_continue body;
       break_stack := l_end :: !break_stack;
+      
+      (* 保存进入循环前的环境状态 *)
+      let env_before_loop = Hashtbl.copy env in
+      
     if (!has_continue = true) then begin
       let l_continue = while_new_label () in
       continue_stack := l_continue :: !continue_stack;
@@ -312,6 +316,31 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       code := !code @ [TacIfGoto (cond_not_t, l_end)];                 
       code := !code @ [TacLabel l_body];
       gen_stmt body env code;
+      
+      (* 为循环中修改的变量生成phi节点 *)
+      let modified_vars = ref [] in
+      Hashtbl.iter (fun var_name after_version ->
+        try
+          let before_version = Hashtbl.find env_before_loop var_name in
+          if before_version <> after_version then
+            modified_vars := var_name :: !modified_vars
+        with Not_found -> ()
+      ) env;
+      
+      (* 为修改的变量创建phi节点 *)
+      List.iter (fun var_name ->
+        let before_version = Hashtbl.find env_before_loop var_name in
+        let after_version = Hashtbl.find env var_name in
+        let new_version = inc_ssa_version env var_name `Control in
+        let before_ssa = ssa_var_name var_name before_version `Control in
+        let after_ssa = ssa_var_name var_name after_version `Control in
+        code := !code @ [TacPhi (new_version, before_ssa, after_ssa)];
+        (* 更新当前作用域中的变量映射 *)
+        (match !scope_stack with
+         | current::_ -> Hashtbl.replace current var_name new_version
+         | [] -> ())
+      ) !modified_vars;
+      
       code := !code @ [TacGoto l_cond]; 
       code := !code @ [TacLabel l_continue];
       code := !code @ [TacGoto l_cond]; 
@@ -328,6 +357,31 @@ let rec gen_stmt (s : statement) (env : (string, int) Hashtbl.t) (code : tac lis
       code := !code @ [TacIfGoto (cond_not_t, l_end)];                 
       code := !code @ [TacLabel l_body];
       gen_stmt body env code;
+      
+      (* 为循环中修改的变量生成phi节点 *)
+      let modified_vars = ref [] in
+      Hashtbl.iter (fun var_name after_version ->
+        try
+          let before_version = Hashtbl.find env_before_loop var_name in
+          if before_version <> after_version then
+            modified_vars := var_name :: !modified_vars
+        with Not_found -> ()
+      ) env;
+      
+      (* 为修改的变量创建phi节点 *)
+      List.iter (fun var_name ->
+        let before_version = Hashtbl.find env_before_loop var_name in
+        let after_version = Hashtbl.find env var_name in
+        let new_version = inc_ssa_version env var_name `Control in
+        let before_ssa = ssa_var_name var_name before_version `Control in
+        let after_ssa = ssa_var_name var_name after_version `Control in
+        code := !code @ [TacPhi (new_version, before_ssa, after_ssa)];
+        (* 更新当前作用域中的变量映射 *)
+        (match !scope_stack with
+         | current::_ -> Hashtbl.replace current var_name new_version
+         | [] -> ())
+      ) !modified_vars;
+      
       code := !code @ [TacGoto l_cond];  
       code := !code @ [TacLabel l_end];
       break_stack := List.tl !break_stack

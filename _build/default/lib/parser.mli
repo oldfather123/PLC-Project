@@ -1,14 +1,6 @@
 type token =
-  | NUMBER of (
-# 6 "lib/parser.mly"
-        int
-# 6 "lib/parser.mli"
-)
-  | IDENTIFIER of (
-# 7 "lib/parser.mly"
-        string
-# 11 "lib/parser.mli"
-)
+  | NUMBER of (int)
+  | IDENTIFIER of (string)
   | BREAK
   | CONTINUE
   | ELSE

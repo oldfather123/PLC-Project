@@ -196,19 +196,30 @@ let () =
   try
     let opt = ref false in
     let ast = 
-      (* if Array.length Sys.argv > 1 then
+      if Array.length Sys.argv > 1 then
         if Sys.argv.(1) = "-opt" then 
           (opt := true;
           parse_file Sys.argv.(2))
           (* parse_stdin ()) *)
         else
         parse_file Sys.argv.(1)
-      else *)
+      else
         parse_stdin () 
     in
     (* print_comp_unit ast; *)
     (* run_comp_unit ast; *)
-    
+    (* let tac_lst = 
+      gen_comp_unit ast
+    in 
+    Printf.printf "==Original TAC==\n";
+    print_tac tac_lst;
+
+    let tac_lst_opt = 
+      gen_comp_unit_opt ast
+    in 
+    Printf.printf "\n\n\n=== Optimized TAC ===\n";
+    print_tac (Lib.Cfg_gen_new.optimize_transfer_tac tac_lst_opt); *)
+
     let tac_list = 
       if !opt = false then
       gen_comp_unit ast

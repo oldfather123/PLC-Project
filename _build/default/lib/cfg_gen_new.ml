@@ -606,6 +606,32 @@ let resolve_variable env var =
   in
   resolve_recursive var []
 
+(* 专门用于TacParam的变量解析 - 不进行常量折叠，保持变量形式 *)
+let resolve_variable_for_param env var =
+  let rec resolve_recursive var visited =
+    if List.mem var visited then var  (* 避免循环引用 *)
+    else
+      let visited' = var :: visited in
+      (* 对于TacParam，我们只进行复制传播，不进行常量折叠 *)
+      if is_ssa_variable var then (
+        (* 对SSA变量的复制传播要谨慎，只在简单情况下进行 *)
+        try 
+          let next_var = Hashtbl.find env.copy_map var in
+          if next_var = var then var  (* 避免自引用 *)
+          else if is_ssa_variable next_var then var  (* 避免SSA间的复杂传播 *)
+          else resolve_recursive next_var visited'
+        with Not_found -> var
+      ) else (
+        (* 对非SSA变量可以进行复制传播，但不做常量折叠 *)
+        try 
+          let next_var = Hashtbl.find env.copy_map var in
+          if next_var = var then var  (* 避免自引用 *)
+          else resolve_recursive next_var visited'
+        with Not_found -> var
+      )
+  in
+  resolve_recursive var []
+
 (* 计算二元操作 *)
 let fold_binary_op op left right =
   try
@@ -697,7 +723,8 @@ let optimize_instruction_improved env instr =
       TacIfGoto (resolved_cond, label)
   
   | TacParam operand ->
-      let resolved_operand = resolve_variable env operand in
+      (* 对于TacParam指令，使用专门的解析函数，不进行常量折叠 *)
+      let resolved_operand = resolve_variable_for_param env operand in
       TacParam resolved_operand
   
   | TacReturn (Some operand) ->
@@ -753,6 +780,22 @@ let optimize_instructions_improved instrs =
       with Not_found -> var
     in
     
+    (* 专门用于TacParam的替换函数 - 避免替换为数字常量 *)
+    let rec substitute_for_param var =
+      try
+        let replacement = Hashtbl.find substitutions var in
+        if replacement = var then var
+        else 
+          (* 检查replacement是否是数字常量，如果是则不替换 *)
+          (try
+            let _ = int_of_string replacement in
+            var  (* 如果是数字常量，保持原变量名 *)
+          with _ ->
+            substitute_for_param replacement  (* 如果不是数字常量，继续递归替换 *)
+          )
+      with Not_found -> var
+    in
+    
     (* 应用替换并过滤冗余赋值 *)
     let result = ref [] in
     List.iter (function
@@ -772,7 +815,7 @@ let optimize_instructions_improved instrs =
           let final_operand = substitute operand in
           result := TacReturn (Some final_operand) :: !result
       | TacParam operand ->
-          let final_operand = substitute operand in
+          let final_operand = substitute_for_param operand in
           result := TacParam final_operand :: !result
       | TacIfGoto (cond, label) ->
           let final_cond = substitute cond in
@@ -824,60 +867,8 @@ let optimize_instructions_improved instrs =
   
   let merged = perform_expression_merging inlined in
 
-  (* 第三点五轮：SSA 前向重命名——在同一线性序列内，优先使用最近定义的 SSA 版本 *)
-  let ssa_forward_rename instructions =
-  let current_map = Hashtbl.create 32 in
-  let rewrite_var v =
-    match VariableVersioning.parse_ssa_var v with
-    | Some {base_name; scope; _} ->
-      let key = base_name ^ "-" ^ scope in
-      (try Hashtbl.find current_map key with Not_found -> v)
-    | None -> v
-  in
-  let update_def dest =
-    match VariableVersioning.parse_ssa_var dest with
-    | Some {base_name; scope; _} ->
-      let key = base_name ^ "-" ^ scope in
-      Hashtbl.replace current_map key dest
-    | None -> ()
-  in
-  let result = ref [] in
-  List.iter (function
-    | TacAssign (dest, src) ->
-      let src' = rewrite_var src in
-      update_def dest;
-      result := TacAssign (dest, src') :: !result
-    | TacBinOp (dest, l, op, r) ->
-      let l' = rewrite_var l in
-      let r' = rewrite_var r in
-      update_def dest;
-      result := TacBinOp (dest, l', op, r') :: !result
-    | TacUnOp (dest, op, src) ->
-      let src' = rewrite_var src in
-      update_def dest;
-      result := TacUnOp (dest, op, src') :: !result
-    | TacIfGoto (cond, label) ->
-      let cond' = rewrite_var cond in
-      result := TacIfGoto (cond', label) :: !result
-    | TacParam v ->
-      let v' = rewrite_var v in
-      result := TacParam v' :: !result
-    | TacReturn (Some v) ->
-      let v' = rewrite_var v in
-      result := TacReturn (Some v') :: !result
-    | TacCall (dest, f, argc, args) ->
-      let args' = List.map rewrite_var args in
-      update_def dest;
-      result := TacCall (dest, f, argc, args') :: !result
-    | TacPhi (dest, s1, s2) ->
-      (* 不改写 phi 输入，保持控制流语义；但记录目的为当前版本 *)
-      update_def dest;
-      result := TacPhi (dest, s1, s2) :: !result
-    | other -> result := other :: !result
-  ) instructions;
-  List.rev !result
-  in
-  let renamed = ssa_forward_rename merged in
+  (* 第三点五轮：SSA 前向重命名——暂时禁用以保持原始变量类型 *)
+  let renamed = merged in  (* 直接使用merged结果，不进行重命名 *)
   
   (* 第四轮：再次进行常量传播 *)
   let env4 = create_opt_env () in
@@ -951,6 +942,58 @@ let remove_dead_code_improved ?global_used instructions =
         | TacReturn (Some var) -> Hashtbl.replace used var true
         | _ -> ()
       ) instructions;
+      
+      (* 特别保护循环相关的变量：标记所有在while循环标签之间的赋值 *)
+      let protect_loop_variables () =
+        let is_in_loop = ref false in
+        let loop_vars = Hashtbl.create 32 in
+        
+        (* 第一遍：收集循环中涉及的变量 *)
+        List.iter (function
+          | TacLabel label when String.contains label 'w' && String.contains label 'L' ->
+              is_in_loop := true
+          | TacLabel label when !is_in_loop ->
+              (* 检查是否离开了循环区域 *)
+              if not (String.contains label 'w' || String.contains label 'L') then
+                is_in_loop := false
+          | TacAssign (dest, _) when !is_in_loop ->
+              (* 收集循环中被赋值的变量的基础名 *)
+              let base_name = VariableVersioning.get_base_name dest in
+              Hashtbl.replace loop_vars base_name true
+          | TacIfGoto (cond, _) when !is_in_loop ->
+              (* 收集循环条件中使用的变量的基础名 *)
+              let base_name = VariableVersioning.get_base_name cond in
+              Hashtbl.replace loop_vars base_name true
+          | _ -> ()
+        ) instructions;
+        
+        (* 第二遍：保护所有与循环变量相关的定义 *)
+        List.iter (function
+          | TacAssign (dest, src) ->
+              let dest_base = VariableVersioning.get_base_name dest in
+              if Hashtbl.mem loop_vars dest_base then (
+                Hashtbl.replace used dest true;
+                Hashtbl.replace used src true
+              )
+          | TacBinOp (dest, src1, _, src2) ->
+              let dest_base = VariableVersioning.get_base_name dest in
+              if Hashtbl.mem loop_vars dest_base then (
+                Hashtbl.replace used dest true;
+                Hashtbl.replace used src1 true;
+                Hashtbl.replace used src2 true
+              )
+          | TacPhi (dest, src1, src2) ->
+              let dest_base = VariableVersioning.get_base_name dest in
+              if Hashtbl.mem loop_vars dest_base then (
+                Hashtbl.replace used dest true;
+                Hashtbl.replace used src1 true;
+                Hashtbl.replace used src2 true
+              )
+          | _ -> ()
+        ) instructions
+      in
+      
+      protect_loop_variables ();
       
       (* 然后进行反向依赖分析 *)
       let rec mark_dependencies var =
