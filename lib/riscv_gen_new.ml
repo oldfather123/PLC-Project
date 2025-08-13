@@ -233,6 +233,7 @@ let tac_to_riscv tac_list =
       else if is_digit_string var then
         (Printf.eprintf "Error: Constant value used as variable: %s in TAC: %s\n" var (string_of_tac tac);
         failwith ("Constant value used as variable: " ^ var ^ " in TAC: " ^ string_of_tac tac))
+        (* -1 *)
       else
         (Printf.eprintf "Error: Variable not found: %s in TAC: %s\n" var (string_of_tac tac);
         failwith ("Variable not found: " ^ var ^ " in TAC: " ^ string_of_tac tac))
@@ -256,7 +257,7 @@ let tac_to_riscv tac_list =
       (* 获取目标变量的栈偏移 *)
       let dest_offset = get_var_offset dest (TacAssign (dest, src)) in
       (try
-        let value = int_of_string src in
+        let value = int_of_string src in 
         (* Printf.printf "int value = %d to dest %s\n" value dest; *)
         (* 如果 src 是常量，直接加载到寄存器 a0 *)
         (* 标记变量已经存储到栈中 *)
@@ -269,7 +270,7 @@ let tac_to_riscv tac_list =
           RLi ("a0", value)  (* 将常量加载到寄存器 a0 *)
         ] @ acc) xs
         
-      with Failure _ ->
+      with Failure _msg ->
         (* Printf.eprintf "Failure occurred: %s\n" msg;
         Printf.printf "int variable = %s to dest %s\n" src dest; *)
         let src_offset = get_var_offset src (TacAssign (dest, src)) in
@@ -285,7 +286,7 @@ let tac_to_riscv tac_list =
         )
 
     | TacBinOp (x1, x, op, a) :: TacUnOp (x3, "!", x2) :: TacIfGoto (x4, label) :: xs when x2 = x1 && x4 = x3 && op <> "&&" && op <> "||" ->
-        (* 优化模式：直接生成 beq/bne 指令 *)
+        if is_digit_string a = false then
         let src1_offset = get_var_offset x (TacBinOp (x1, x, op, a)) in
         let src2_offset = get_var_offset a (TacBinOp (x1, x, op, a)) in
         let instr = match op with
@@ -303,8 +304,26 @@ let tac_to_riscv tac_list =
             RLw ("a1", src2_offset, "s0")   (* 加载 a 的值到寄存器 a1 *)
           ] @ acc
         ) xs
+      else
+        let src1_offset = get_var_offset x (TacBinOp (x1, x, op, a)) in
+        let instr = match op with
+          | "==" -> [RBne ("a0", "a1", label)]  (* 生成 RBne 指令 *)
+          | "!=" -> [RBeq ("a0", "a1", label)]  (* 生成 RBeq 指令 *)
+          | "<" -> [RBge ("a0", "a1", label)]  (* 生成 RBge 指令 *)
+          | "<=" -> [RBgt ("a0", "a1", label)]  (* 生成 RBgt 指令 *)
+          | ">" -> [RBle ("a0", "a1", label)]  (* 生成 RBle 指令 *)
+          | ">=" -> [RBlt ("a0", "a1", label)]  (* 生成 RBlt 指令 *)
+          | _ -> failwith "Unsupported operation in if-goto"
+        in
+        process_tac (
+          instr @ [
+            RLw ("a0", src1_offset, "s0");  (* 加载 x 的值到寄存器 a0 *)
+            RLi ("a1", int_of_string a)   (* 加载 a 的值到寄存器 a1 *)
+          ] @ acc
+        ) xs
 
     | TacBinOp (dest, src1, op, src2) :: xs ->
+      if is_digit_string src2 = false then
         let dest_offset = get_var_offset dest (TacBinOp (dest, src1, op, src2))in
         let src1_offset = get_var_offset src1 (TacBinOp (dest, src1, op, src2))in
         let src2_offset = get_var_offset src2 (TacBinOp (dest, src1, op, src2))in
@@ -329,8 +348,33 @@ let tac_to_riscv tac_list =
           instr "a2" "a1" "a0" @  
           [RLw ("a1", src1_offset, "s0");
           RLw ("a0", src2_offset, "s0")] @ acc) xs
+      else
+        let dest_offset = get_var_offset dest (TacBinOp (dest, src1, op, src2))in
+        let src1_offset = get_var_offset src1 (TacBinOp (dest, src1, op, src2))in
+        let instr = match op with
+          | "+" -> (fun rd rs1 rs2 -> [RAdd (rd, rs1, rs2)])
+          | "-" -> (fun rd rs1 rs2 -> [RSub (rd, rs1, rs2)])
+          | "*" -> (fun rd rs1 rs2 -> [RMul (rd, rs1, rs2)])
+          | "/" -> (fun rd rs1 rs2 -> [RDiv (rd, rs1, rs2)])
+          | "%" -> (fun rd rs1 rs2 -> [RRem (rd, rs1, rs2)])
+          | "==" -> (fun rd rs1 rs2 -> [RSeqz (rd, rd); RSub (rd, rs1, rs2)])
+          | "!=" -> (fun rd rs1 rs2 -> [RXori (rd, rd, 1); RSeqz (rd, rd); RSub (rd, rs1, rs2)])
+          | "<" -> (fun rd rs1 rs2 -> [RSlt (rd, rs1, rs2)])
+          | "<=" -> (fun rd rs1 rs2 -> [RXori (rd, rd, 1); RSlt (rd, rs1, rs2)])
+          | ">" -> (fun rd rs1 rs2 -> [RSgt (rd, rs1, rs2)])
+          | ">=" -> (fun rd rs1 rs2 -> [RXori (rd, rd, 1); RSgt (rd, rs1, rs2)])
+          | "&&" -> (fun rd rs1 rs2 -> [RAnd (rd, rs1, rs2)])
+          | "||" -> (fun rd rs1 rs2 -> [ROr (rd, rs1, rs2)])
+          | _ -> failwith ("Unsupported operation " ^ op)
+        in
+        process_tac (
+          [RSw ("a2", dest_offset, "s0")] @
+          instr "a2" "a1" "a0" @  
+          [RLw ("a1", src1_offset, "s0");
+          RLi ("a0", int_of_string src2)] @ acc) xs
     
     | TacUnOp (dest, op, src) :: xs ->
+      if is_digit_string src = false then
       let dest_offset = get_var_offset dest (TacUnOp (dest, op, src)) in
       let src_offset = get_var_offset src (TacUnOp (dest, op, src))in
       let instr = match op with
@@ -341,6 +385,16 @@ let tac_to_riscv tac_list =
       in
       process_tac (
         [RSw ("a0", dest_offset, "s0")] @ instr @ [RLw ("a1", src_offset, "s0")] @ acc) xs
+    else
+      let dest_offset = get_var_offset dest (TacUnOp (dest, op, src)) in
+      let instr = match op with
+        | "+" -> [RMv ("a0", "a1")]  (* 正号操作：将 src 的值复制到 a0 *)
+        | "!" -> [RSeqz ("a0", "a1")]  (* 非操作：将 src 的值取反 *)
+        | "-" -> [RNeg ("a0", "a1")]  (* 负号操作：将 src 的值取负 *)
+        | _ -> (Printf.eprintf "Unsupported unary operation: %s" op; failwith ("Unsupported unary operation: " ^ op))
+      in
+      process_tac (
+        [RSw ("a0", dest_offset, "s0")] @ instr @ [RLi ("a1", int_of_string src)] @ acc) xs
     
     | TacLabel l :: xs when String.starts_with ~prefix:"if_" l || 
                            String.starts_with ~prefix:"then_" l || 
@@ -349,10 +403,17 @@ let tac_to_riscv tac_list =
     | TacGoto l :: xs -> process_tac ([RJ l] @ acc) xs
 
     | TacIfGoto (cond, label) :: xs ->
+      if is_digit_string cond = false then
       let cond_offset = get_var_offset cond (TacIfGoto (cond, label)) in
       process_tac (
         [RBnez ("a0", label);            (* 如果条件为真，跳转到指定标签 *)
           RLw ("a0", cond_offset, "s0")  (* 从栈中加载条件变量的值到寄存器 a0 *) 
+        ] @ acc
+      ) xs
+      else
+      process_tac (
+        [RBnez ("a0", label);            (* 如果条件为真，跳转到指定标签 *)
+          RLi ("a0", int_of_string cond)  (* 从栈中加载条件变量的值到寄存器 a0 *) 
         ] @ acc
       ) xs
 
@@ -390,11 +451,24 @@ let tac_to_riscv tac_list =
         process_tac (save_return_inst @ call_inst @ param_insts @ acc) xs
 
     | TacReturn (Some var) :: xs ->
+      if is_digit_string var = false then
         let offset = get_var_offset var (TacReturn (Some var)) in
         (match !current_info with
         | Some info ->
             process_tac ( List.rev [
               RLw ("a0", offset, "s0");
+              RLw ("ra", info.stack_size - 4, "sp");
+              RLw ("s0", info.stack_size - 8, "sp");
+              RAddi ("sp", "sp", info.stack_size);
+              RRet
+            ] @ acc) xs
+        | None -> failwith "No active function for return")
+      else
+        let value = int_of_string var in
+        (match !current_info with
+        | Some info ->
+            process_tac ( List.rev [
+              RLi ("a0", value);
               RLw ("ra", info.stack_size - 4, "sp");
               RLw ("s0", info.stack_size - 8, "sp");
               RAddi ("sp", "sp", info.stack_size);
